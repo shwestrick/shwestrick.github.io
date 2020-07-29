@@ -102,6 +102,12 @@ space has the exact same shape, but upside down. So, we can complete a
 
 <img width="400px" src="/assets/seam-carve-strips.svg" />
 
+
+TODO:
+
+* A bit more to write...
+* the `.webm` above doesn't load on mobile???
+
 <!--
 In code, we could do this in MPL as follows:
 
