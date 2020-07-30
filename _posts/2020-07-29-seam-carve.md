@@ -14,7 +14,7 @@ horizontal, to reduce either the width or height of an image.
 For example, here's a panorama I took a few years ago near Spruce Knob, WV.
 The image is super wide, so let's carve it down:
 
-<video width="100%" loop autoplay>
+<video width="100%" loop autoplay muted>
   <source src="/assets/carve.mp4" type="video/mp4" />
 </video>
 
