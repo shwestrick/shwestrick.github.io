@@ -128,8 +128,8 @@ On 1 processor (P = 1), the row-major strategy is faster by about 15%, but
 quickly hits its maximum possible speedup of (for this input and grain size)
 approximately 2x, seeing no additional improvement above 10 processors.
 In contrast, the triangular strategy continues to get faster as the number
-of processors increases, with self-speedups of about 4x on 10 processors and
-7x on 20.
+of processors increases, with self-speedups of about 4x on 10 processors,
+6.5x on 10, and 7x on 30.
 
 ## Conclusion
 
@@ -138,8 +138,8 @@ largely memory-bound, and the amount of parallelism for typical images
 is fairly small... so small in fact, that the most obvious method for
 parallelization (row-major order) extracts almost no parallelism. With a small
 change, we were able to improve performance significantly: in particular,
-the triangular strategy described here is 4x faster than the row-major strategy
-on 30 processors, despite being 15% slower on a single core.
+the triangular strategy described here is 3.5x faster than the row-major
+strategy on 30 processors, despite being mildly slower on a single core.
 
 <!--
 In code, we could do this in MPL as follows:
