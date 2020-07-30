@@ -54,23 +54,25 @@ times as desired to remove lots of seams.
 
 ## Finding the minimum seam in parallel
 
-# Row-major order
+# Row-major order (doesn't work)
 
 The dependencies within the equation for `M` appear to offer a lot of
-parallelism: if we proceed in row-major order, then each row can be
-processed entirely in parallel.
+parallelism. The most obvious approach would be to use row-major order,
+where each row is processed entirely in parallel before moving on to the
+next row.
 
 <img width="300px" src="/assets/seam-carve-equation.svg" />
 
 However, there's a major problem in practice with this approach:
-typical images are at most only a few thousand pixels wide! This gives us
-just a few thousand arithmetic instructions to parallelize at a time.
-On modern multicore machines, this is simply
-[too fine grained](https://en.wikipedia.org/wiki/Granularity_%28parallel_computing%29).
-
-I found that on my machine, a reasonable granularity is 1000 pixels or more.
-For an image of size 2000x2000 (4 million pixels), using row-major order,
-we would be able to a maximum speedup of 2x. Not good enough.
+typical images are at most only a few thousand pixels wide! Within a single
+row, there's just not enough work to parallelize without paying too much
+for the parallelism itself.
+In particular, I found that on my machine, a reasonable
+[granularity](https://en.wikipedia.org/wiki/Granularity_%28parallel_computing%29)
+is between 1000 and 2000 pixels. If we tried to use row-major order,
+we wouldn't be able to extract *any* parallelism from typical images.
+Even on high-definition images, say 4K resolution, we would have a maximum
+possible speedup of 2x to 4x. Not good enough!
 
 # Triangular-blocked strips
 
@@ -80,33 +82,64 @@ better way to partition up the work. This is something that probably
 [Rezaul Chowdhury](https://dblp.uni-trier.de/pers/c/Chowdhury:Rezaul_Alam.html)'s
 work), but here we'll just try to design something ourselves.
 
-What are all of the dependencies for a single value `M(i,j)`? If we were
-to visualize these, they would look like triangles with the pointy end pointing
-down.
+What are all of the dependencies for a single value `M(i,j)`? Visually,
+the dependencies form a triangle with the pointy-end pointing down:
 
 <img width="400px" src="/assets/seam-carve-depend.svg" />
 
-Here I've shown two such dependency-triangles. This is just for illustration,
-but it's worth pointing out that
-we *could* do these two triangles in parallel if we wanted. There would be
-a little bit of repeated work where they overlap, and the leftover space below
-the triangles is not really a nice shape... but we *could*.
-
-Let's look for a better arrangement of triangles: ideally, there should be
-no overlap, and the leftover space should have a good shape.
-
-Here's a nice
-observation: if we use triangles with even-length base, then the leftover
-space has the exact same shape, but upside down. So, we can complete a
-*strip* (multiple rows) of the image by doing two sets of triangles in parallel.
+Now imagine splitting the image up into a bunch of ***strips***, where each
+strip is a set of contiguous rows. One strip can be be processed in two rounds
+of triangles, as depicted below, where we first do all of the downward-pointing
+triangles in parallel, and then do all of the upward-pointing triangles.
+This is only correct because the dependencies of each location are triangular
+above it.
 
 <img width="400px" src="/assets/seam-carve-strips.svg" />
 
+(Note: We're using triangles of even width at the base, because these tile
+naturally within a strip. If we wanted to use odd-width triangles, we would
+still have to use even-width triangles to fill in the left-over space, so
+we might as well make our lives easier and only use one type of triangle.)
 
-TODO:
+Recall that a reasonable target granularity is about one or two thousand
+pixels. If we use triangles with a base-width of 80, then each triangle
+contains 1560 pixels. This is good news: an image of width 1K can fit
+12 such triangles, yielding a maximum speedup of 12x. On a high-resolution
+4K image, we can achieve up to 50x speedup.
 
-* A bit more to write...
-* the `.webm` above doesn't load on mobile???
+## Implementation and performance
+
+With [`mpl`](https://github.com/mpllang/mpl), I implemented the
+triangular-blocking strategy. The code is available in the
+`examples/src/seam-carve/` subdirectory.
+
+Here are some performance numbers for
+removing 10 seams from an image of size approximately 2600x600. The
+row-major granularity is 1000 pixels, and the triangular granularity is
+1560 pixels (base-width 80).
+
+```
+            P=1   P=10  P=20  P=30
+row-major   0.66  0.38  0.38  0.38
+triangular  0.78  0.18  0.12  0.11
+```
+
+On 1 processor (P = 1), the row-major strategy is faster by about 15%, but
+quickly hits its maximum possible speedup of (for this input and grain size)
+approximately 2x, seeing no additional improvement above 10 processors.
+In contrast, the triangular strategy continues to get faster as the number
+of processors increases, with self-speedups of about 4x on 10 processors and
+7x on 20.
+
+## Conclusion
+
+Seam carving is a challenging benchmark for a number of reasons. It is
+largely memory-bound, and the amount of parallelism for typical images
+is fairly small... so small in fact, that the most obvious method for
+parallelization (row-major order) extracts almost no parallelism. With a small
+change, we were able to improve performance significantly: in particular,
+the triangular strategy described here is 4x faster than the row-major strategy
+on 30 processors, despite being 15% slower on a single core.
 
 <!--
 In code, we could do this in MPL as follows:
