@@ -14,8 +14,8 @@ horizontal, to reduce either the width or height of an image.
 For example, here's a panorama I took a few years ago near Spruce Knob, WV.
 The image is super wide, so let's carve it down:
 
-<video width="700px" loop autoplay>
-  <source src="/assets/carve.webm" type="video/webm" />
+<video width="100%" loop autoplay>
+  <source src="/assets/carve.mp4" type="video/mp4" />
 </video>
 
 I recently implemented a seam-carver as a parallel benchmark for
@@ -61,7 +61,7 @@ parallelism. The most obvious approach would be to use row-major order,
 where each row is processed entirely in parallel before moving on to the
 next row.
 
-<img width="300px" src="/assets/seam-carve-equation.svg" />
+<img width="50%" src="/assets/seam-carve-equation.svg" />
 
 However, there's a major problem in practice with this approach:
 typical images are at most only a few thousand pixels wide! Within a single
@@ -85,7 +85,7 @@ work), but here we'll just try to design something ourselves.
 What are all of the dependencies for a single value `M(i,j)`? Visually,
 the dependencies form a triangle with the pointy-end pointing down:
 
-<img width="400px" src="/assets/seam-carve-depend.svg" />
+<img width="60%" src="/assets/seam-carve-depend.svg" />
 
 We can use triangles likes these to split up the work in a nice way. First,
 image grouping adjacent rows into ***strips***. Within one strip,
@@ -101,7 +101,7 @@ Here's a picture using triangles that are 6 pixels wide at the base. Note that
 if we use triangles of even base-width, then these tile naturally with no
 overlap.
 
-<img width="400px" src="/assets/seam-carve-strips.svg" />
+<img width="60%" src="/assets/seam-carve-strips.svg" />
 
 How wide should each triangle be in practice? Recall that a reasonable target
 granularity is about one or two thousand pixels. If we use triangles with a
