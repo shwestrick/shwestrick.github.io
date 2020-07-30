@@ -87,25 +87,33 @@ the dependencies form a triangle with the pointy-end pointing down:
 
 <img width="400px" src="/assets/seam-carve-depend.svg" />
 
-Now imagine splitting the image up into a bunch of ***strips***, where each
-strip is a set of contiguous rows. One strip can be be processed in two rounds
-of triangles, as depicted below, where we first do all of the downward-pointing
-triangles in parallel, and then do all of the upward-pointing triangles.
-This is only correct because the dependencies of each location are triangular
-above it.
+We can use triangles likes these to split up the work in a nice way. First,
+image grouping adjacent rows into ***strips***. Within one strip,
+cover the top of the strip with a bunch downward-pointing triangles. The
+leftover space will look like a bunch of upward-pointing triangles, each
+of which has all of its dependencies already satisfied (this is not immediately
+obvious but drawing a picture will help). So, we
+can process one strip in two parallel rounds, where first we do a bunch of
+downward-pointing triangles in parallel, and then we do a bunch of
+upward-pointing triangles to fill in the leftover space.
+
+Here's a picture using triangles that are 6 pixels wide at the base. Note that
+if we use triangles of even base-width, then these tile naturally with no
+overlap.
 
 <img width="400px" src="/assets/seam-carve-strips.svg" />
 
-(Note: We're using triangles of even width at the base, because these tile
-naturally within a strip. If we wanted to use odd-width triangles, we would
-still have to use even-width triangles to fill in the left-over space, so
-we might as well make our lives easier and only use one type of triangle.)
+How wide should each triangle be in practice? Recall that a reasonable target
+granularity is about one or two thousand pixels. If we use triangles with a
+base-width of 64, then each triangle contains 1056 pixels; a base-width of 90
+yields 2070 pixels. So a base-width somewhere between 64 and 90 pixels seems
+appropriate.
 
-Recall that a reasonable target granularity is about one or two thousand
-pixels. If we use triangles with a base-width of 80, then each triangle
-contains 1560 pixels. This is good news: an image of width 1K can fit
-12 such triangles, yielding a maximum speedup of 12x. On a high-resolution
-4K image, we can achieve up to 50x speedup.
+This is good news: if we use a base-width of e.g. 80, then we can fit
+12 triangles horizontally in a 1K-width image, suggesting a maximum possible
+speedup of 12x. On a high-resolution 4K image, we could fit 50 such triangles
+horizontally. This is a bit improvement over the row-major limit of around
+2 or 4 grains.
 
 ## Implementation and performance
 
@@ -114,32 +122,51 @@ triangular-blocking strategy. The code is available in the
 `examples/src/seam-carve/` subdirectory.
 
 Here are some performance numbers for
-removing 10 seams from an image of size approximately 2600x600. The
-row-major granularity is 1000 pixels, and the triangular granularity is
-1560 pixels (base-width 80).
+removing 10 seams from an image of size approximately 2600x600. I did a little
+bit of tuning, and ended up choosing a row-major granularity of 1000 pixels,
+and a triangular base-width granularity of 88 (1980 pixels).
 
 ```
             P=1   P=10  P=20  P=30
 row-major   0.66  0.38  0.38  0.38
-triangular  0.78  0.18  0.12  0.11
+triangular  0.78  0.17  0.12  0.09
 ```
 
 On 1 processor (P = 1), the row-major strategy is faster by about 15%, but
 quickly hits its maximum possible speedup of (for this input and grain size)
 approximately 2x, seeing no additional improvement above 10 processors.
 In contrast, the triangular strategy continues to get faster as the number
-of processors increases, with self-speedups of about 4x on 10 processors,
-6.5x on 10, and 7x on 30.
+of processors increases, with self-speedups of about 5x on 10 processors,
+6.5x on 20, and 9x on 30.
+
+Despite having a mild amount of overhead on 1 processor, we can see that
+the triangular strategy is provides huge gains: it is as much as 4x
+faster than the row-major strategy when using lots of processors.
 
 ## Conclusion
 
-Seam carving is a challenging benchmark for a number of reasons. It is
-largely memory-bound, and the amount of parallelism for typical images
-is fairly small... so small in fact, that the most obvious method for
-parallelization (row-major order) extracts almost no parallelism. With a small
-change, we were able to improve performance significantly: in particular,
-the triangular strategy described here is 3.5x faster than the row-major
-strategy on 30 processors, despite being mildly slower on a single core.
+One might wonder: why are the speedups we got so far away from the theoretical
+limits? With a base-width of 88, shouldn't we be able to get up to 30x speedup
+on an image of width 2600? Well, unfortunately, there are a large number of
+barriers to achieving such good speedup in practice: ineffective cache
+utilization, memory bandwidth bottlenecks, non-optimal scheduling... etc.
+
+In the case of seam carving, there are two major limiting factors.
+  1. Seam carving is largely memory-bound, i.e., for each memory access it
+  only does a small amount of work before the next access. To get around this
+  bottleneck, we might need better cache utilization, and so we would have to
+  more carefully lay out the values of `M(i,j)` in memory. (For this
+  implementation, I used a simple flat-array layout, where `M(i,j)` lives at
+  index `i*width + j`. We could instead try storing these values in a
+  hierarchical structure, indexing first by strip, and then by triangle, to
+  better improve locality.)
+  2. Seam carving has high span, performing a small amount of work in
+  between each synchronization. For example in the row-major strategy, we use
+  a barrier between each row, and in the triangular strategy, we use two
+  barriers per strip. This can cause the scheduler to perform too many thread
+  migrations. To mitigate this, one thing we could try is to let triangles
+  overlap slightly, to increase the size of each strip, and therefore require
+  fewer barrier synchronizations overall.
 
 <!--
 In code, we could do this in MPL as follows:
