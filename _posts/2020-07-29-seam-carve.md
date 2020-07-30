@@ -112,14 +112,16 @@ appropriate.
 This is good news: if we use a base-width of e.g. 80, then we can fit
 12 triangles horizontally in a 1K-width image, suggesting a maximum possible
 speedup of 12x. On a high-resolution 4K image, we could fit 50 such triangles
-horizontally. This is a bit improvement over the row-major limit of around
+horizontally. This is a big improvement over the row-major limit of around
 2 or 4 grains.
 
 ## Implementation and performance
 
-With [`mpl`](https://github.com/mpllang/mpl), I implemented the
-triangular-blocking strategy. The code is available in the
-`examples/src/seam-carve/` subdirectory.
+With [`mpl`](https://github.com/mpllang/mpl), I implemented both the row-major
+and triangular strategies to compare their performance. The code for the
+triangular strategy is available in the `examples/src/seam-carve/` subdirectory
+of the [`mpl`](https://github.com/mpllang/mpl) repo. I'll leave the row-major
+code as an exercise to the reader... it's quite easy to code!
 
 Here are some performance numbers for
 removing 10 seams from an image of size approximately 2600x600. I did a little
@@ -133,23 +135,25 @@ triangular  0.78  0.17  0.12  0.09
 ```
 
 On 1 processor (P = 1), the row-major strategy is faster by about 15%, but
-quickly hits its maximum possible speedup of (for this input and grain size)
+on more processors
+quickly reaches its maximum possible speedup of (for this input and grain size)
 approximately 2x, seeing no additional improvement above 10 processors.
 In contrast, the triangular strategy continues to get faster as the number
 of processors increases, with self-speedups of about 5x on 10 processors,
 6.5x on 20, and 9x on 30.
 
 Despite having a mild amount of overhead on 1 processor, we can see that
-the triangular strategy is provides huge gains: it is as much as 4x
-faster than the row-major strategy when using lots of processors.
+the triangular strategy provides significant gains: it is as much as 4x
+faster than the row-major strategy on higher core counts.
 
 ## Conclusion
 
-One might wonder: why are the speedups we got so far away from the theoretical
+One might wonder: why are the speedups we got so far away from theoretical
 limits? With a base-width of 88, shouldn't we be able to get up to 30x speedup
 on an image of width 2600? Well, unfortunately, there are a large number of
 barriers to achieving such good speedup in practice: ineffective cache
-utilization, memory bandwidth bottlenecks, non-optimal scheduling... etc.
+utilization, memory bandwidth bottlenecks, non-optimal scheduling... and
+many more.
 
 In the case of seam carving, there are two major limiting factors.
   1. Seam carving is largely memory-bound, i.e., for each memory access it
@@ -165,8 +169,9 @@ In the case of seam carving, there are two major limiting factors.
   a barrier between each row, and in the triangular strategy, we use two
   barriers per strip. This can cause the scheduler to perform too many thread
   migrations. To mitigate this, one thing we could try is to let triangles
-  overlap slightly, to increase the size of each strip, and therefore require
-  fewer barrier synchronizations overall.
+  overlap slightly, to increase the size of each strip. This trades a small
+  amount of duplicated work for fewer barrier synchronizations overall, which
+  could prove to be hugely beneficial.
 
 <!--
 In code, we could do this in MPL as follows:
