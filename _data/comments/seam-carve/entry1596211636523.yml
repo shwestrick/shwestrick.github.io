@@ -1,8 +1,0 @@
-_id: e733eca0-d347-11ea-ba71-edc280f4ef37
-_parent: 'https://shwestrick.github.io/2020/07/29/seam-carve.html'
-replying_to_uid: ''
-message: "Testing comments! Does it work?\r\n\r\nApparently it supports `.md` markdown?\r\n\r\nLet's see:\r\n```sml\r\nfun tabulate f n = Array.tabulate (n, f)\r\n```"
-name: Sam
-email: ''
-hp: ''
-date: 1596211636
