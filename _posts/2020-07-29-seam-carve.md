@@ -2,6 +2,7 @@
 layout: post
 title:  "Parallel Seam Carving"
 date:   2020-07-29 12:13:00 -0400
+comments: true
 ---
 
 [Seam carving](https://en.wikipedia.org/wiki/Seam_carving) is a technique

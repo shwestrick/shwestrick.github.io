@@ -42,6 +42,14 @@ theme: minima
 plugins:
   - jekyll-feed
 
+
+staticman_url: https://shwestrick-github-io-staticman.herokuapp.com/v2/entry/shwestrick/shwestrick.github.io/master/comments
+
+reCaptcha:
+  siteKey: 6LeGsLgZAAAAAGoPDkVoty5M4b47BaXTzMYR2mDa
+  secret: GsSgGpWLcx59qo1AMjWvzDOCReP1himiEbHj+q+2eFEcnratWCmiQ8tQYyhf111llZhHQOE0abuOFHHQzCHuzghCTn7RMsb4aDkCOuklQeooN9Kps3QrOjmP5DWB2xkQkEfEgDEpsfDEow9LBGuWUJKkrNR/tzhwcrV1dbzwAt9yEyMcaH50qRufgV+ED+bGy1HkH+AJG0aBWJYaMznWltZofiV6bBLLshDPuatB5+3iud1wrkTMLrZ8VSxbKVNYtq7iQS4dhOFR+UyDZ5xPS5dT4mXXmCpSYx+65Ds2kAKQuOBzDxypPSJ3nTluP6rDlSl5d8l+HeY+paLm5sH6ssOvcAlGJ+DwOVEf1bkPyerG54uRPmSyZm0vrMYKghPa5QLXEfBmgWHqoExScFG1zYBmBOIBE0K2GKaE7fgSivIPfVabx2DVXN+dn2dcmLjD9HTNTsASSEYpPDyN/sqQMByv9WRm2fKXRTw4H2g86MHnZ/jrXGqVHxfz63dU8hmLLLYUvCLT9oYJb+l6bFde7LEhPB8D0tvn3qiknegp7N/BwcE7YLQkIVdaqBaqaSM046ZM0LMtKeBeVfDtXQvLa4v/X8MAySgsHUW+dl03chR61i8jwB6nHXMELO/KczJcxK1ejfmG1xtNm/BQKTOiH0JV/3S0qjtheUNWkrq9rpU=
+
+
 # Exclude from processing.
 # The following items will not be processed, by default.
 # Any item listed under the `exclude:` key here will be automatically added to
