@@ -28,20 +28,20 @@ as a parallel benchmark for
 
 Getting real parallel speedups in this implementation turned out to be an
 interesting challenge. For typical images, which are fairly small,
-the most obvious approach for parallelizing the algorithm was not able to
-extract enough parallelism, because it required too small of a
+I found that the most obvious approach for parallelizing the algorithm was not
+able to extract enough parallelism, because it required too small of a
 *[grain size](https://en.wikipedia.org/wiki/Granularity_%28parallel_computing%29)*.
 So, I designed a new way of parallelizing the algorithm which works much
 better on small images. This post presents some of the details.
 
-## The Seam-carving Algorithm
+## The Seam Carving Algorithm
 
 The idea behind seam-carving is to consider all possible seams in an image,
-select the one which least important, and remove it. A ***seam*** is a path of
+select the one which is least important, and remove it. A ***seam*** is a path of
 pixels that cuts across an image, touching one pixel in each row (or column)
-along the way, so when we remove a seam, we reduce either the width or height
+along the way. When we remove a seam, we reduce either the width or height
 of the image by 1. We can repeat this process as many times as desired to
-reduce the width or height arbitrarily.
+shrink the image.
 
 We'll base the "importance" of seams on a notion of pixel ***energy***, which
 can be defined in
@@ -82,9 +82,9 @@ minimum seam energies starting at the smallest in the bottommost row.
 The dependencies within the equation for `M` appear to offer a lot of
 parallelism. Perhaps the most immediately obvious approach is to compute
 `M` in ***row-major*** order,
-where first we do all of row 0, and then row 1, etc. With this ordering,
-each row can be processed entirely in parallel, because each value `M(i, j)`
-only depends on three values `M(i-1, _)` from the previous row.
+where first we do all of row 0, and then all of row 1, etc. With this ordering,
+the values within a row can be computed entirely in parallel, because each
+`M(i, j)` only depends on three values `M(i-1, _)` from the previous row.
 
 However, there's a major problem in practice with row-major order:
 typical images are only at most a few thousand pixels wide, and each pixel
@@ -110,7 +110,7 @@ the dependencies form a triangle with the pointy-end pointing down:
 <img width="60%" src="/assets/seam-carve/depend.svg" />
 
 We can use triangles like these to split up the work in a nice way. First,
-image grouping adjacent rows into ***strips***. Within one strip,
+imagine grouping adjacent rows into ***strips***. Within one strip,
 cover the top of the strip with a bunch downward-pointing triangles. The
 leftover space will look like a bunch of upward-pointing triangles, each
 of which has all of its dependencies already satisfied (this is not immediately
@@ -125,17 +125,16 @@ overlap.
 
 <img width="60%" src="/assets/seam-carve/strips.svg" />
 
-How wide should each triangle be in practice? Recall that a reasonable target
-granularity is about one or two thousand pixels. If we use triangles with a
-base-width of 64, then each triangle contains 1056 pixels; a base-width of 90
-yields 2070 pixels. So a base-width somewhere between 64 and 90 pixels seems
-appropriate.
+How wide should each triangle be in practice? Recall that we're shooting for a
+target granularity of maybe one or two thousand pixels. This corresponds to
+triangles with base-widths of somewhere between 64 (1056 pixels in the triangle)
+and 90 (2070 pixels in the triangle).
 
-This is good news: if we use a base-width of e.g. 80, then we can fit
-12 triangles horizontally in a 1K-width image, suggesting a maximum possible
-speedup of 12x. On a high-resolution 4K image, we could fit 50 such triangles
-horizontally. This is a big improvement over the row-major limit of around
-2 or 4 grains.
+So, in a smallish image, e.g. 1000 pixels wide, we can fit
+at least 11 triangles horizontally, suggesting a maximum possible
+speedup of 11x or more. This is a big improvement over the row-major strategy,
+which (using a granularity of 1000 pixels) would not be able to extract any
+parallelism from such an image.
 
 ## Implementation and performance
 
