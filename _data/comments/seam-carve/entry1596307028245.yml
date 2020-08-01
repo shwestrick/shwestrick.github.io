@@ -1,0 +1,8 @@
+_id: 0116ab10-d426-11ea-b34b-4f8d4060a255
+_parent: 'https://shwestrick.github.io/2020/07/29/seam-carve.html'
+replying_to_uid: c66a0f70-d416-11ea-b7b1-f152a146714b
+message: "After a re-read, I probably just mis-parsed \"each row can be processed entirely in parallel\". I read it as \"across the set of all rows, each row can be processed in parallel (but the work within a row is serial)\" (e.g., one row per worker), but of course it could validly mean \"the work *within* each row can be processed in parallel (e.g., one pixel per worker), but whole rows go serially (row 1 must be processed after row 0, etc). \r\n\r\nWhew!\r\n\r\nAnyway, the way you have it now is unambiguous, I think."
+name: Travis Downs
+email: c6937532928911c0dae3c9c89b658c09
+hp: ''
+date: 1596307028
