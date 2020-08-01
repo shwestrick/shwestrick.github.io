@@ -1,0 +1,8 @@
+_id: c66a0f70-d416-11ea-b7b1-f152a146714b
+_parent: 'https://shwestrick.github.io/2020/07/29/seam-carve.html'
+replying_to_uid: ''
+message: "Great post! It's good to see a _practical_ analysis of the cost of too-fine-grained parallelism, since this is often hand-waved away when discussing \"embarrassingly parallel\" problems. As you show, to make some things fast you need a not too fine-grained approach (too much overhead) and also not to coarse (or else you can't use all the existing parallelism). Finding a minimal overhead approach which scales well across a range of available parallelism is often a bit tricky.\r\n\r\nAbout this:\r\n\r\n> With this ordering, each row can be processed entirely in parallel, because each value M(i, j) only depends on three values M(i-1, _) from the previous row.\r\n\r\nShouldn't \"each row\" there actually be \"each column (within a row)\" or \"each pixel\"?\r\n\r\nThat is, if I understand what you are suggesting for this approach, it is doing each row serially, and getting per-pixel (or coarser) parallelism within a row. \r\n\r\nMinor typos:\r\n\r\n> image grouping\r\n\r\nI guess should be \"imagine grouping\""
+name: Travis Downs
+email: c6937532928911c0dae3c9c89b658c09
+hp: ''
+date: 1596300487
