@@ -3,6 +3,7 @@ layout: post
 title:  "Parallel Seam Carving"
 date:   2020-07-29 12:13:00 -0400
 comments: true
+mathjax: true
 ---
 
 [Seam carving](https://en.wikipedia.org/wiki/Seam_carving) is a technique
@@ -57,21 +58,21 @@ an image.
 To compute *minimum seam energies*, we can use a simple
 [dynamic programming](https://en.wikipedia.org/wiki/Dynamic_programming)
 algorithm. For simplicity here, let's focus on vertical seams. Let
-`M(i,j)` be the minimum energy of
-any partial seam that ends at row `i` and column `j`, and let
-`E(i,j)` be the energy of the pixel at that position. These minimum seam
+$$M(i,j)$$ be the minimum energy of
+any partial seam that ends at row $$i$$ and column $$j$$, and let
+$$E(i,j)$$ be the energy of the pixel at that position. These minimum seam
 energies are related by the following equation:
 
-```
-M(i,j) = E(i,j) + min(M(i-1,j-1), M(i-1,j), M(i-1,j+1))
-```
+$$
+M(i,j) = E(i,j) + \min(M(i-1,j-1), M(i-1,j), M(i-1,j+1))
+$$
 
 A picture might help. For each position, we look at the minimum partial
 seams that end above it, pick the smallest, and then add the next pixel.
 
 <img width="50%" src="/assets/seam-carve/equation.svg" />
 
-Once `M` has been fully computed, we can find the minimum overall seam by
+Once $$M$$ has been fully computed, we can find the minimum overall seam by
 working backwards, from bottom to top, by walking upwards along the path of
 minimum seam energies starting at the smallest in the bottommost row.
 
@@ -79,12 +80,12 @@ minimum seam energies starting at the smallest in the bottommost row.
 
 # Row-major order (doesn't work)
 
-The dependencies within the equation for `M` appear to offer a lot of
+The dependencies within the equation for $$M$$ appear to offer a lot of
 parallelism. Perhaps the most immediately obvious approach is to compute
-`M` in ***row-major*** order,
+$$M$$ in ***row-major*** order,
 where first we do all of row 0, and then all of row 1, etc. With this ordering,
 the values within a row can be computed entirely in parallel, because each
-`M(i, j)` only depends on three values `M(i-1, _)` from the previous row.
+$$M(i, j)$$ only depends on three values $$M(i-1, \ldots)$$ from the previous row.
 
 However, there's a major problem in practice with row-major order:
 typical images are only at most a few thousand pixels wide, and each pixel
@@ -94,7 +95,7 @@ to parallelize effectively! We'll need a
 of at least, say, a thousand pixels to amortize the cost of parallelism itself.
 
 This pretty much rules out using row-major order for typical, small images.
-Is there a better to compute `M` without reducing the grain size?
+Is there a better to compute $$M$$ without reducing the grain size?
 
 # Triangular-blocked strips
 
@@ -104,7 +105,7 @@ better way to partition up the work. This is something that probably
 [Rezaul Chowdhury](https://dblp.uni-trier.de/pers/c/Chowdhury:Rezaul_Alam.html)'s
 work), but here we'll just try to design something ourselves.
 
-What are all of the dependencies for a single value `M(i,j)`? Visually,
+What are all of the dependencies for a single value $$M(i,j)$$? Visually,
 the dependencies form a triangle with the pointy-end pointing down:
 
 <img width="60%" src="/assets/seam-carve/depend.svg" />
@@ -178,9 +179,9 @@ In the case of seam carving, there are two major limiting factors.
   1. Seam carving is largely memory-bound, i.e., for each memory access it
   only does a small amount of work before the next access. To get around this
   bottleneck, we might need better cache utilization, and so we would have to
-  more carefully lay out the values of `M(i,j)` in memory. (For this
-  implementation, I used a simple flat-array layout, where `M(i,j)` lives at
-  index `i*width + j`. We could instead try storing these values in a
+  more carefully lay out the values of $$M(i,j)$$ in memory. (For this
+  implementation, I used a simple flat-array layout, where $$M(i,j)$$ lives at
+  index $$iW + j$$. We could instead try storing these values in a
   hierarchical structure, indexing first by strip, and then by triangle, to
   better improve locality.)
   2. Seam carving has high span, performing a small amount of work in
