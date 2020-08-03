@@ -70,7 +70,7 @@ $$
 A picture might help. For each position, we look at the minimum partial
 seams that end above it, pick the smallest, and then add the next pixel.
 
-<img width="50%" src="/assets/seam-carve/equation.svg" />
+<img width="250px" src="/assets/seam-carve/equation.svg" />
 
 Once $$M$$ has been fully computed, we can find the minimum overall seam by
 working backwards, from bottom to top, by walking upwards along the path of
@@ -108,7 +108,7 @@ work), but here we'll just try to design something ourselves.
 What are all of the dependencies for a single value $$M(i,j)$$? Visually,
 the dependencies form a triangle with the pointy-end pointing down:
 
-<img width="60%" src="/assets/seam-carve/depend.svg" />
+<img width="300px" src="/assets/seam-carve/depend.svg" />
 
 We can use triangles like these to split up the work in a nice way. First,
 imagine grouping adjacent rows into ***strips***. Within one strip,
@@ -124,7 +124,7 @@ Here's a picture using triangles that are 6 pixels wide at the base. Note that
 if we use triangles of even base-width, then these tile naturally with no
 overlap.
 
-<img width="60%" src="/assets/seam-carve/strips.svg" />
+<img width="350px" src="/assets/seam-carve/strips.svg" />
 
 How wide should each triangle be in practice? Recall that we're shooting for a
 target granularity of maybe one or two thousand pixels. This corresponds to

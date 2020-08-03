@@ -4,7 +4,7 @@ title: About
 permalink: /about/
 ---
 
-<img src="/assets/headshot.png" width="150" height="150" border="2px solid" border-radius="50%" />
+<img class="imagecircle" src="/assets/headshot.png" width="175" height="175" />
 
 I'm [Sam Westrick](http://samwestrick.com), a PhD student at Carnegie Mellon
 University doing research on parallel algorithms and programming languages.
