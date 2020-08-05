@@ -22,6 +22,19 @@ img.imagecircle {
   border-radius: 50%;
 }
 
+table.images {
+  border: none;
+  text-align: center;
+}
+
+table.images td {
+  border: none;
+}
+
+table.images img {
+  width: 100%;
+}
+
 @keyframes spin {
   0% {
     transform: rotate(0deg);

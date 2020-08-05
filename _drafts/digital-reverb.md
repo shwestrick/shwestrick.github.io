@@ -80,7 +80,16 @@ diagram.
 ## Comb Filter
 
 A comb filter produces periodic echoes of a sound, where each successive
-echo is dimished in intensity.
+echo is dimished in intensity. This combines two effects: *attenuation* and
+*delay*.
+
+<table class="images">
+<tr>
+  <td><img src="/assets/reverb/attenuate.svg">Attenuation</td>
+  <td><img src="/assets/reverb/delay.svg">Delay</td>
+</tr>
+</table>
+
 The *comb* filter is so-called because the effect it has on an impulse looks
 like a comb. TODO PICTURE
 
