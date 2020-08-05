@@ -28,6 +28,34 @@ weird surfaces, we can generate
 For decades now, reverb has been a quintessential component of digital sound
 processing software. Many ways to generate digital reverb...
 
+## Sampling
+
+Real-world audio signals are *analog*. We could model a signal mathematically
+by a function $$\mathbb{R} \to \mathbb{R}$$, but this doesn't immediately
+translate to a digital world. The next best approximation we can do is to
+***sample*** the signal at a regular frequency, and store the "heights"
+of these discrete samples.
+
+<img width="80%" src="/assets/reverb/sampling.svg">
+
+It may appear as though sampling a signal *loses
+information*, but surprisingly, this is not necessarily the case. In the
+first half of the 20<sup>th</sup> century, multiple mathematicians proved that
+you can perfectly reconstruct an analog signal as long as the ***sample rate***
+is high enough. This result is known is as the
+[Nyquist-Shannon sampling theorem](https://en.wikipedia.org/wiki/Nyquist%E2%80%93Shannon_sampling_theorem).
+
+In this post, we'll be dealing with signals represented as sequences $$S$$ of
+samples. Each $$S[i]$$ is one sample of the original signal.
+For simplicity we will assume that $$i \in \mathbb{Z}$$
+can be any integer, either positive or negative, extending as far as we
+need in either direction. (Note however that in practice, the sequence will be
+represented by an array and will "start" at index 0.)
+
+When we use the notation $$S = \langle x, y, z, \ldots \rangle$$,
+the intended meaning is that $$S[i] = 0$$ for all $$i < 0$$, and otherwise
+$$S[0] = x$$, $$S[1] = y$$, $$S[2] = z$$, etc.
+
 ## A Simple Artificial Reverberator
 
 The algorithm described here is one of many reverberators designed by
@@ -53,33 +81,55 @@ diagram.
 
 A comb filter produces periodic echoes of a sound, where each successive
 echo is dimished in intensity.
-
-<img width="70%" src="/assets/reverb/comb.svg">
-
 The *comb* filter is so-called because the effect it has on an impulse looks
 like a comb. TODO PICTURE
 
-# Implementation
+We can implement a comb filter as an analog circuit that looks like this:
 
-This is the interesting part.
+<img width="70%" src="/assets/reverb/comb.svg">
 
-It will be helpful when writing a parallel implementation to convert the
-pictoral representation of the comb filter into a mathematical equation
-with sequences, as ultimately we represent the signal digitally as a
-sequence of samples.
+This circuit takes two parameters:
+  1. an attenuation constant $$\alpha \in [0,1]$$, and
+  2. a delay constant $$D$$, which is the amount of time the signal is
+  delayed in the feedback loop.
 
-We will think here of a signal $$S$$ as a sequence where $$S[i]$$ is the
-$$i^\text{th}$$ element. For simplicity we will assume that $$i \in \mathbb{Z}$$
-can be any integer (although in practice, the sequence will be represented by
-an array and will "start" at index 0).
+# Sampling the Comb
 
-Sor a signal $$S$$, attenuation $$\alpha$$, and delay
-$$D$$, the combed signal $$S'$$ is given by the following equation.
+Consider a signal with samples $$S = \langle s_0, s_1, s_2, \ldots \rangle$$,
+and imagine running the signal through the comb circuit, with a delay duration
+$$D$$ of one sample. If we pause at each sample point and measure the
+wires of the circuit, we would see the following (showing the first three
+samples):
+
+<img width="70%" src="/assets/reverb/comb-steps.svg">
+
+Initially, the first sample $$s_0$$ flows on the input through
+to the output. On the next sample point, $$s_1$$ flows on the input and is
+combined with the delayed $$\alpha s_0$$ from the feedback loop, producing
+$$s_1 + \alpha s_0$$ on the output. This is fed back through the loop and
+attenuated by $$\alpha$$, so that on the final sample point, $$s_2$$ is
+combined with $$\alpha s_1 + \alpha^2 s_0$$ to produce
+$$s_2 + \alpha s_1 + \alpha^2 s_0$$ on the output.
+
+Altogether, on input $$S$$ with a delay time of one sample, we see that the
+resulting signal $$S'$$ is
+
+$$
+S' = \langle s_0,\ s_1 + \alpha s_0,\ s_2 + \alpha s_1 + \alpha^2 s_0,\ \ldots \rangle
+$$
+
+**Exercise for the reader**: what are the first 5 samples of $$S'$$ if we
+used a delay time of 2 samples?
+
+**General form.**
+For a signal $$S$$, attenuation $$\alpha$$, and delay
+$$D$$, the output signal $$S'$$ is given by the following equation.
 
 $$
 S'[n] = \sum_{i=0}^\infty \alpha^i S[n - iD]
 $$
 
+# Implementing a Comb Filter in Practice
 
 ## Allpass Filter
 
