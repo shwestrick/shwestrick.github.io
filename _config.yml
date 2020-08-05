@@ -42,6 +42,8 @@ theme: minima
 plugins:
   - jekyll-feed
 
+kramdown:
+  parse_block_html: true
 
 staticman_url: https://shwestrick-github-io-staticman.herokuapp.com/v2/entry/shwestrick/shwestrick.github.io/master/comments
 

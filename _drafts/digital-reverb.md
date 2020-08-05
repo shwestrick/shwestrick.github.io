@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Implementing Parallel Digital Reverberation"
+title:  "A Parallel Reverberation Algorithm"
 mathjax: true
 ---
 
@@ -11,13 +11,13 @@ back at you, this is essentially a form of reverb. What you're hearing
 is your voice *reflected* back at you by hard surfaces on the other side
 of the canyon.
 
-All rooms are just tiny
+If learning about reverb has taught me anything, it's that all rooms are just tiny
 canyons, with a lot more surfaces, and at much closer distances. Each surface
-provides a different echo, which might come straight back to your ears, or
-might bounce around the room for a while before you hear it. To simulate
-the feeling of a room, we just need to simulate all of its
-surfaces, and how these surfaces interact with one another, to create echoes
-and resonances of the original sound.
+provides a different echo, which might come straight back to your ears or
+bounce around the room for a while first. To simulate
+a room, we need to simulate all of its
+surfaces, and how these surfaces interact with one another, to create a bunch
+of echoes and resonances of the original sound.
 
 Typical rooms have a lot of surfaces at weird angles (tables, chairs, etc.)
 and just a few big flat surfaces, such as its four walls and ceiling. Roughly
@@ -79,9 +79,12 @@ diagram.
 
 ## Comb Filter
 
-A comb filter produces periodic echoes of a sound, where each successive
-echo is dimished in intensity. This combines two effects: *attenuation* and
-*delay*.
+A [comb filter](https://en.wikipedia.org/wiki/Comb_filter) is essentially an
+echo generator. It produces periodic echoes of
+a sound, where each successive echo is dimished in intensity.
+This combines two effects: *attenuation* and *delay*.
+Attenuating a signal makes it less intense, and delaying a signal makes it
+"start" later.
 
 <table class="images">
 <tr>
@@ -90,24 +93,38 @@ echo is dimished in intensity. This combines two effects: *attenuation* and
 </tr>
 </table>
 
-The *comb* filter is so-called because the effect it has on an impulse looks
-like a comb. TODO PICTURE
+If we look at a single sample from the original signal, a comb filter will cause
+that sample to be repeated again and again at regular intervals, each time
+smaller than before.
 
-We can implement a comb filter as an analog circuit that looks like this:
+<img src="/assets/reverb/comb-signal.svg">
+
+# Analog Circuit
+
+Implementing a comb filter with an analog circuit is extremely simple, as
+shown below. Using
+a feedback loop, we can cause the signal to echo at regular intervals.
+An attenuation parameter $$\alpha \in [0,1]$$ controls the intensity of each
+successive echo.
 
 <img width="70%" src="/assets/reverb/comb.svg">
 
-This circuit takes two parameters:
-  1. an attenuation constant $$\alpha \in [0,1]$$, and
-  2. a delay constant $$D$$, which is the amount of time the signal is
-  delayed in the feedback loop.
+# Discretizing the Comb
 
-# Sampling the Comb
+For a (sampled) signal $$S$$, attenuation $$\alpha$$, and delay duration
+$$D$$ (measured in samples), the samples of the combed signal $$S'$$ are given
+by the following equation.
 
-Consider a signal with samples $$S = \langle s_0, s_1, s_2, \ldots \rangle$$,
-and imagine running the signal through the comb circuit, with a delay duration
-$$D$$ of one sample. If we pause at each sample point and measure the
-wires of the circuit, we would see the following (showing the first three
+$$
+S'[i] = \sum_{j=0}^\infty \alpha^j S[i - jD]
+$$
+
+To see why this is correct, let's walk through a small example.
+Imagine running a signal through the circuit shown above
+with a delay duration of $$D = 1$$ sample.
+We'll write $$S = \langle s_0, s_1, s_2, \ldots \rangle$$ for the samples of
+this signal. If we pause the circuit at each sample point and measure the
+wires, we would see the following (showing the first three
 samples):
 
 <img width="70%" src="/assets/reverb/comb-steps.svg">
@@ -127,18 +144,29 @@ $$
 S' = \langle s_0,\ s_1 + \alpha s_0,\ s_2 + \alpha s_1 + \alpha^2 s_0,\ \ldots \rangle
 $$
 
-**Exercise for the reader**: what are the first 5 samples of $$S'$$ if we
-used a delay time of 2 samples?
+# Parallel Implementation of a Comb Filter
 
-**General form.**
-For a signal $$S$$, attenuation $$\alpha$$, and delay
-$$D$$, the output signal $$S'$$ is given by the following equation.
+Using the equation $$S'[i] = \sum_{j=0}^\infty \alpha^j S[i - jD]$$, we'll now
+derive a parallel algorithm for a comb filter. Our goal is
 
-$$
-S'[n] = \sum_{i=0}^\infty \alpha^i S[n - iD]
-$$
+The most obvious approach would be to compute exactly what the equation says,
+i.e. allocate an array and set each index to $$S'[n]$$. But for an
 
-# Implementing a Comb Filter in Practice
+<!-- <div class="algorithm">
+**Bad Comb Algorithm**
+
+Inputs:
+  * array $$S$$ of $$N$$ samples
+  * attenuation $$\alpha$$
+  * delay $$D$$ (measured in samples)
+
+Output: array $$S'$$ of $$N$$ samples
+
+Algorithm:
+1. Allocate output array $$S'$$
+2. In parallel for each $$0 \leq n < N$$:
+  * Set $$S'[n] \gets \sum_{i=0}^{\left\lfloor{n/D}\right\rfloor} \alpha^i S[n - iD]$$
+</div> -->
 
 ## Allpass Filter
 
