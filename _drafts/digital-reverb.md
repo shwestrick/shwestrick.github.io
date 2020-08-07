@@ -103,8 +103,8 @@ $$\alpha \in [0,1]$$ is shown explicitly below.
 To get a sequential algorithm for a comb filter, we can imagine feeding
 samples through the analog circuit shown above. One-by-one, we take a sample
 from the input, add to it the value of the feedback loop, and then pass this
-along to the output. The values in the feedback loop are just values that
-were output previously.
+along to the output. The values in the feedback loop are easy to retrieve,
+because these values were output previously.
 
 Here is the
 [`mpl`](https://github.com/mpllang/mpl)
@@ -117,81 +117,46 @@ value of a sequence $$S$$ with `get S i` and `set S i x`.
 {% highlight sml %}
 (* D: the number of samples to delay in the feedback loop
  * a: the attenuation constant, in range [0,1]
- * input: the sequence of input samples.
+ * S: the sequence of input samples.
  *)
-fun sequentialComb (D: int) (a: real) (input: real seq) =
+fun sequentialComb (D: int) (a: real) (S: real seq) =
   let
     val n = length S
-    val output = alloc n
+    val C = alloc n
   in
     for (0, n) (fn i =>
       (* this is executed for each i from 0 to n-1 *)
       if i < D then
-        set output i (get input i)
+        set C i (get S i)
       else
-        set output i (get input i + a * get output (i - D))
+        set C i (get S i + a * get C (i - D))
     );
-    output
+
+    C
   end
 {% endhighlight %}
 
 # Parallel Comb Algorithm
 
 For a sequence of samples $$S$$, attenuation $$\alpha$$, and delay duration
-$$D$$ (measured in samples), the combed samples $$S'$$ are given
+$$D$$ (measured in samples), the combed samples $$C$$ are given
 by the following equation.
 
 $$
-S'[i] = \sum_{j=0}^{\lfloor i / D \rfloor} \alpha^j S[i - jD]
+C[i] = \sum_{j=0}^{\lfloor i / D \rfloor} \alpha^j S[i - jD]
 $$
 
-<!--
-To see why this is correct, let's walk through a small example.
-Imagine running a signal through the circuit shown above
-with a delay duration of $$D = 1$$ sample.
-We'll write $$S = \langle s_0, s_1, s_2, \ldots \rangle$$ for the samples of
-this signal. If we pause the circuit at each sample point and measure the
-wires, we would see the following (showing the first three
-samples):
-
-<img width="70%" src="/assets/reverb/comb-steps.svg">
-
-Initially, the first sample $$s_0$$ flows on the input through
-to the output. On the next sample point, $$s_1$$ flows on the input and is
-combined with the delayed $$\alpha s_0$$ from the feedback loop, producing
-$$s_1 + \alpha s_0$$ on the output. This is fed back through the loop and
-attenuated by $$\alpha$$, so that on the final sample point, $$s_2$$ is
-combined with $$\alpha s_1 + \alpha^2 s_0$$ to produce
-$$s_2 + \alpha s_1 + \alpha^2 s_0$$ on the output.
-
-Altogether, on input $$S$$ with a delay time of one sample, we see that the
-resulting signal $$S'$$ is
-
-$$
-S' = \langle s_0,\ s_1 + \alpha s_0,\ s_2 + \alpha s_1 + \alpha^2 s_0,\ \ldots \rangle
-$$
-
--->
-
-<!-- <div class="algorithm">
-**Bad Comb Algorithm**
-
-Inputs:
-  * array $$S$$ of $$N$$ samples
-  * attenuation $$\alpha$$
-  * delay $$D$$ (measured in samples)
-
-Output: array $$S'$$ of $$N$$ samples
-
-Algorithm:
-1. Allocate output array $$S'$$
-2. In parallel for each $$0 \leq n < N$$:
-  * Set $$S'[n] \gets \sum_{i=0}^{\left\lfloor{n/D}\right\rfloor} \alpha^i S[n - iD]$$
-</div> -->
-
-## Allpass Filter
+## All-pass Filter
 
 <img width="80%" src="/assets/reverb/allpass.svg">
+
+An all-pass filter is essentially just a comb filter with some extra
+machinery. If $$C$$ is the combed version of signal $$S$$, then the result
+of the all-pass on $$S$$ is:
+
+$$
+A[i] = -\alpha S[i] + (1 - \alpha^2) C[i - D]
+$$
 
 # Implementation
 
@@ -199,6 +164,21 @@ You might have noticed that the feedback loop of the allpass filter is
 essentially just a comb filter. This will make our lives much simpler,
 as we can reuse the fancy parallel implementation we developed for the
 comb filter to generate an allpass filter.
+
+With [`mpl`](https://github.com/mpllang/mpl), this is easy to implement
+as follows. The function `tabulate n f` produces a sequence of length
+`n` where the $$i^\text{th}$$ element is set to the result of `f i`.
+This occurs is parallel, under the hood.
+{% highlight sml %}
+fun allPass D a S =
+  let
+    val C = comb D a S
+  in
+    tabulate n (fn i =>
+      (~a * get S i) + (1.0 - a*a) * (if i < D then 0.0 else get C (i - D))
+    )
+  end
+{% endhighlight %}
 
 ## Putting it all together
 
