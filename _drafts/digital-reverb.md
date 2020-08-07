@@ -4,7 +4,7 @@ title:  "A Comb Filter is All You Need: Fast Parallel Reverb"
 mathjax: true
 ---
 
-In my quest to develop a wide range of interesting benchmarks for
+In my quest to develop a range of interesting benchmarks for
 [`mpl`](https://github.com/mpllang/mpl) (including for example the
 *seam-carver* I described in my
 [previous post]({% post_url 2020-07-29-seam-carve %})), I found myself
@@ -67,11 +67,21 @@ $$S[0] = x$$, $$S[1] = y$$, $$S[2] = z$$, etc.
 ## Comb Filter
 
 A [feedback comb filter](https://en.wikipedia.org/wiki/Comb_filter#Feedback_form)
-is essentially an echo generator. It produces periodic echoes of
-a sound, where each successive echo is dimished in intensity.
-This combines two effects: *attenuation* and *delay*.
-Attenuating a signal makes it less intense, and delaying a signal makes it
-"start" later.
+produces many equally-spaced echoes of a sound, where each echo is
+dimished in intensity. I've drawn an example below. The input
+appears first, colored in blue, and each distinct echo is a different color.
+(The actual output signal would be the sum of all
+these echoes together as one signal.)
+<!--
+To illustrate the
+[impulse response](https://en.wikipedia.org/wiki/Impulse_response)
+of the filter, I highlighted the various repeats of one input sample across
+multiple echoes. Each sample of the input produces (infinitely) many
+equally-spaced, decaying impulses in the output. -->
+
+<img src="/assets/reverb/comb-signal.svg">
+
+Essentially, a comb filter combines two effects: attenuation and delay.
 
 <table class="images">
 <tr>
@@ -80,25 +90,11 @@ Attenuating a signal makes it less intense, and delaying a signal makes it
 </tr>
 </table>
 
-Below, I've drawn an example of applying a comb filter. The input
-appears first, colored in blue, and each distinct echo is a different color.
-(The actual output signal would be the sum of all
-these echoes altogether as one signal, but I kept them separate in the
-picture to help see what's going on.) I've also highlighted one sample from each
-echo to illustrate the
-[impulse response](https://en.wikipedia.org/wiki/Impulse_response)
-of the filter: each sample is repeated (infinitely) many times as a series of
-equally-spaced, decaying impulses.
-
-<img src="/assets/reverb/comb-signal.svg">
-
-**Analog Circuit**. Implementing a feedback comb filter as an analog
-circuit is extremely simple, as shown below. Using
-a feedback loop, we cause the signal to repeat after a delay, and this
-occurs recursively so that these repeats are themselves repeated,
-continuing indefinitely.
-An attenuation parameter $$\alpha \in [0,1]$$ reduces the intensity of
-each repeat.
+If we were working with analog circuitry, we can achieve both effects at
+the same time with a simple feedback loop, as shown below. Each time around
+the loop, the signal is delayed and attenuated. The amount of delay and
+attenuation is configurable. In this case, the attenuation parameter
+$$\alpha \in [0,1]$$ is shown explicitly below.
 
 <img width="70%" src="/assets/reverb/comb.svg">
 
@@ -106,7 +102,7 @@ each repeat.
 
 To get a sequential algorithm for a comb filter, we can imagine feeding
 samples through the analog circuit shown above. One-by-one, we take a sample
-from the input, add it to the value of the feedback loop, and then pass this
+from the input, add to it the value of the feedback loop, and then pass this
 along to the output. The values in the feedback loop are just values that
 were output previously.
 
