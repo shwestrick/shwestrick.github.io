@@ -106,6 +106,7 @@ from the input, add to it the value of the feedback loop, and then pass this
 along to the output. The values in the feedback loop are easy to retrieve,
 because these values were output previously.
 
+<div class="algorithm">
 Here is the
 [`mpl`](https://github.com/mpllang/mpl)
 code for this algorithm. We represent the input and output signals as
@@ -135,8 +136,9 @@ fun sequentialComb (D: int) (a: real) (S: real seq) =
     C
   end
 {% endhighlight %}
+</div>
 
-# Parallel Comb Algorithm
+# A Simple (But Inefficient) Parallel Comb
 
 For a sequence of samples $$S$$, attenuation $$\alpha$$, and delay duration
 $$D$$ (measured in samples), the combed samples $$C$$ are given
@@ -145,6 +147,31 @@ by the following equation.
 $$
 C[i] = \sum_{j=0}^{\lfloor i / D \rfloor} \alpha^j S[i - jD]
 $$
+
+This formula essentially describes a naive parallel algorithm where
+each element of the outpt is computed as a sum of $$i/D$$ terms from
+the input. In terms of
+[work and span](https://en.wikipedia.org/wiki/Analysis_of_parallel_algorithms),
+computing each element in this manner takes $$O(i/D)$$ work
+and $$O(\log (i/D))$$ span.
+
+<div class="remark">
+Computing a summation can be done in parallel
+by dividing the items into two sets, recursively computing the summation
+of the two sets in parallel, and then adding the results. This takes
+linear work and logarithmic span.
+</div>
+
+In total, this adds up to $$O(n^2 / D)$$ work
+and $$O(\log (n/D))$$ span for an input of size $$n$$.
+**Although the span is good, the work of this
+naive algorithm is too expensive.** In comparison, the sequential comb
+algorithm described above takes only $$O(n)$$ work, so this simple parallel
+algorithm is *work-inefficient* by a factor of $$O(n/D)$$. For small values
+of $$D$$, this is especially bad, and small values of $$D$$ are going to be
+the norm for our ultimate reverb algorithm! **We need a better algorithm.**
+
+# A
 
 ## All-pass Filter
 
