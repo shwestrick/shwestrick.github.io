@@ -47,10 +47,12 @@ table.images img {
   width: 100%;
 }
 
-.algorithm:before {
+.algorithm::before {
   content: 'Algorithm';
   font-weight: bold;
-  font-size: 105%;
+  font-size: 14pt;
+  display: block;
+  height: 24pt;
 }
 
 .algorithm {
@@ -79,7 +81,9 @@ table.images img {
 .remark:before {
   content: 'Remark';
   font-weight: bold;
-  font-size: 105%;
+  font-size: 14pt;
+  display: block;
+  height: 24pt;
 }
 
 .remark {

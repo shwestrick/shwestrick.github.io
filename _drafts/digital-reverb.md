@@ -92,11 +92,23 @@ Essentially, a comb filter combines two effects: attenuation and delay.
 
 If we were working with analog circuitry, we can achieve both effects at
 the same time with a simple feedback loop, as shown below. Each time around
-the loop, the signal is delayed and attenuated, and these effects are
-configurable. In this case, an attenuation parameter $$\alpha \in [0,1]$$ is
-shown explicitly below.
+the loop, the signal is delayed (by some number of samples $$D$$, not shown)
+and attenuated (by multiplying with $$\alpha \in [0,1]$$).
 
 <img width="70%" src="/assets/reverb/comb.svg">
+
+Another way of describing this circuit is with the following equation, where
+we write $$S[i]$$ for the $$i^\text{th}$$ sample of the input,
+and similarly $$C[i]$$ for a sample of the output. The constants
+$$D$$ and $$\alpha$$ are respectively the delay and
+attenuation parameters.
+
+$$
+C[i] =
+\begin{cases}
+  S[i], &i < D \\
+  S[i] + \alpha C[i - D], &\text{otherwise} \end{cases}
+$$
 
 # Sequential Comb Algorithm
 {: #seq-comb}
@@ -107,8 +119,10 @@ from the input, add to it the value of the feedback loop, and then pass this
 along to the output. The values in the feedback loop are easy to retrieve,
 because these values were output previously.
 
-In total, this performs $$O(N)$$ operations on an input of size $$N$$, which
-is optimal---asymptotically, we can't do any better.
+Essentially, this computes the comb filter via the equation
+$$C[i] = S[i] + \alpha C[i - D]$$, proceeding sequentially with
+increasing values of $$i$$. In total, we perform $$O(N)$$ operations on an
+input of size $$N$$, which is optimal---asymptotically, we can't do any better.
 
 <div class="algorithm">
 Here is the
@@ -144,82 +158,178 @@ fun sequentialComb (D: int) (a: real) (S: real seq) =
 {% endhighlight %}
 </div>
 
-# Highly Parallel (But Work-Inefficient) Comb
-{: #simple-par-comb}
-
-TODO: Remove this section? Not super interesting...
-{: style="color:red"}
-
-For a sequence of samples $$S$$, attenuation $$\alpha$$, and delay duration
-$$D$$ (measured in samples), the combed samples $$C$$ are given
-by the following equation.
-
-$$
-C[i] = \sum_{j=0}^{\lfloor i / D \rfloor} \alpha^j S[i - jD]
-$$
-
-This formula essentially describes a naive parallel algorithm where
-each element of the output is computed as a sum of $$i/D$$ terms from
-the input. In terms of
-[work and span](https://en.wikipedia.org/wiki/Analysis_of_parallel_algorithms),
-computing each element in this manner takes $$O(i/D)$$ work
-and $$O(\log (i/D))$$ span.
-
-<div class="remark">
-Computing a summation can be done in parallel
-by dividing the items into two sets, recursively computing the summation
-of the two sets in parallel, and then adding the results. This takes
-linear work and logarithmic span.
-</div>
-
-In total, for an input of size $$N$$, this adds up to $$O(N^2 / D)$$ work
-and $$O(\log (N/D))$$ span.
-**Although the span is good, this parallel algorithm is too expensive.**
-We call it ***work-inefficient***, because it does
-asymptotically more work than the
-fastest comparable sequential algorithm, which we already
-[demonstrated above](#seq-comb) only needs $$O(N)$$ work.
-
-# Work-Efficient (But High Span) Parallel Comb
+# Parallelizing Across Columns
 {: #par-columns-comb}
 
-Another way to describe the comb filter is recursively, as follows.
+Let's look more closely at the
+equation $$C[i] = S[i] + \alpha C[i - D]$$. Lurking in plain sight, this
+equation contains $$D$$ completely independent computations which can
+be computed in parallel.
 
-$$
-C[i] = S[i] + \alpha C[i - D]
-$$
-
-There are $$D$$ completely independent computations hidden within this
-formula. It's helpful to visualize this by laying out $$C$$ in a matrix,
+To see the dependencies within $$C$$ more clearly,
+imagine laying out $$C$$ in a matrix,
 where at row $$i$$ and column $$j$$ we put $$C[iD + j]$$.
-In this layout, each column can be computed independently of every other
-column. For example, as soon as we know the value of $$C[2]$$, we can
-immediately compute $$C[D+2]$$ and then $$C[2D+2]$$ (etc.) without knowing
-any of the values in the other columns.
+In this layout, each column is a standalone computation, completely independent
+of the values in the other columns. For example, as soon as we know the value of
+$$C[2]$$, we can immediately compute $$C[D+2]$$ and then $$C[2D+2]$$, etc.
 
 <img width="60%" src="/assets/reverb/comb-columns.svg">
 
 This observation about independent columns immediately suggests
-one possible algorithm:
-we can do the columns in parallel, and within each column work sequentially
-from top to bottom. This approach
-is work-efficient, performing in total $$O(N)$$ operations. The span however
-is high: each column contains $$\lceil N / D \rceil$$ elements, leaving us with
-$$O(N/D)$$ span. For small values of $$D$$, this algorithm is not very
-parallel at all.
+a parallel algorithm:
+*do the columns in parallel, and within each column work sequentially
+from top to bottom*. This approach
+is work-efficient, performing in total $$O(N)$$ operations, which matches
+the [sequential algorithm described above](#seq-comb). The span however
+is high: each column contains up to $$\lceil N / D \rceil$$ elements, leaving us
+with $$O(N/D)$$ span. For small values of $$D$$, this algorithm is not very
+parallel at all!
+
+<div class="remark">
+[Work and span](https://en.wikipedia.org/wiki/Analysis_of_parallel_algorithms)
+are abstract cost measures of a parallel algorithm. The ***work*** is the
+total number of operations performed, and the ***span*** is the number of
+operations on the critical path (i.e. the longest chain of operations that
+must occur sequentially one-by-one).
+
+Given an algorithm with work $$W$$ and span $$S$$, using $$P$$ processors,
+we can execute that algorithm in $$O(W/P + S)$$ time. Intuitively,
+on each step we perform up to $$P$$ operations (one on each processor), which
+makes fast progress on the overall work, but there must be at least $$S$$ steps
+overall.
+</div>
 
 **Is it possible to reduce the span?** Ideally, we'd like
 to have logarithmic span (like the
 [simple parallel algorithm described above](#simple-par-comb)) without
 increasing the work.
 
-# Work-Efficient, Highly Parallel Comb
+# Parallelizing Within Columns
 
-In the work-efficient parallel algorithm
-[described above](#par-columns-comb), each column is computed independently.
-At first, it might appear as thought the computation within
+At first, it might appear as though the computation within
 a column is entirely sequential. However, it turns out that there is quite
 a lot of parallelism available.
+
+Concretely, the problem we're trying to solve is to take a column of input
+values $$\langle S[i], S[i+D], S[i+2D], \ldots \rangle$$
+and produce a column of output values
+$$\langle C[i], C[i+D], C[i+2D], \ldots \rangle$$.
+
+<img width="40%" src="/assets/reverb/columns-in-out.svg">
+
+Let's simplify by renaming things a little. Let $$X$$ be the input, with
+$$X_0 = S[i]$$, $$X_1 = S[i+D]$$, $$X_2 = S[i+2D]$$, etc. Similarly, let $$Y$$
+be the output. Abstractly, then, the problem is to compute:
+
+$$Y_i = X_i + \alpha Y_{i-1}$$
+
+**A Contraction Algorithm**. The idea behind contraction is the solve a
+problem recursively, in terms of a smaller version of itself. Specifically,
+our goal here is to find new inputs $$X'$$ and $$\alpha'$$, and a new
+output $$Y'$$, such that the same equation holds again:
+
+$$Y_j' = X_j' + \alpha' Y_{j-1}'$$
+
+To get there, let's unroll the original equation a little:
+
+$$
+\begin{align*}
+  Y_i
+  &= X_i + \alpha Y_{i-1} \\
+  &= X_i + \alpha \color{red}{\left(X_{i-1} + \alpha Y_{i-2}\right)}
+  &&\text{(unroll definition of $Y_{i-1}$)} \\
+  &= \left(X_i + \alpha X_{i-1}\right) + \alpha^2 Y_{i-2}
+  &&\text{(rearrange)}
+\end{align*}
+$$
+
+Now we're getting somewhere! Do you see it? We can rename the indices a little
+to make it clear. Let's use a new index $$j$$ with $$2j+1 = i$$:
+
+$$
+\begin{align*}
+  Y_i &= \left(X_i + \alpha X_{i-1}\right) + \alpha^2 Y_{i-2}
+  \\
+  Y_\color{red}{2j+1} &= \left(X_\color{red}{2j+1} + \alpha X_{\color{red}{2j}}\right) + \alpha^2 Y_{\color{red}{2j-1}}
+  &&(\text{let}\ 2j+1 = i)
+  \\
+  \color{red}{Y_j'} &= \left(X_{2j} + \alpha X_{2j-1}\right) + \alpha^2 \color{red}{Y_{j-1}'}
+  &&(\text{let}\ Y_j' = Y_{2j+1})
+  \\
+  Y_j' &= \color{red}{X_j'} + \alpha^2 Y_{j-1}'
+  &&(\text{let}\ X_j' = X_{2j+1} + \alpha X_{2j})
+  \\
+  Y_j' &= X_j' + \color{red}{\alpha'} Y_{j-1}'
+  &&(\text{let}\ \alpha' = \alpha^2)
+\end{align*}
+$$
+
+This sets up the smaller instance of the problem. It is "smaller" in the sense
+that $$X'$$ and $$Y'$$ have half as many elements as $$X$$ and $$Y$$.
+
+The output of the smaller instance gives us a bunch of values $$Y_j'$$, which
+are each equal to $$Y_{2j+1}$$. That is, **the smaller instance provides the
+odd indices of the output**. That leaves us with needing to compute the
+even indices, which is easy: for every unknown value at an even index,
+there's a known value at the previous odd index which can be used to fill
+in the missing value.
+
+<div class="algorithm">
+We define a function
+$$\textsf{ParallelColumn}(\alpha, X, N)$$ for input $$X$$ of length $$N$$.
+The index arithmetic is outrageously tedious, but fairly straightforward.
+
+$$
+\begin{array}{l}
+&\textsf{ParallelColumn}(\alpha, X, N) =
+\\
+&~~~~\text{let}~~X' = \big\langle X[2j+1] + \alpha X[2j] : 0 \leq j < \lfloor N / 2 \rfloor \big\rangle
+  \\
+&~~~~\text{let}~~Y' = \textsf{ParallelColumn}(\alpha^2, X', \lfloor N / 2 \rfloor)
+  \\
+&~~~~\text{let}~~Y(i) =
+    \begin{cases}
+      X[0], &i = 0 \\
+      Y'[(i-1) / 2], &\text{$i$ odd} \\
+      X[i] + \alpha Y'[(i/2)-1], &\text{$i$ even}
+    \end{cases}
+  \\
+&~~~~\text{return}~~\big\langle Y(i) : 0 \leq i < N \big\rangle
+\end{array}
+$$
+
+In [`mpl`](https://github.com/mpllang/mpl), the code is as follows.
+{% highlight sml %}
+fun parallelColumn (alpha: real) (X: real seq) =
+  if length X <= 1 then
+    X
+  else
+    let
+      val N = length X
+      val X' = tabulate (N div 2) (fn j =>
+        get X (2*j+1) + alpha * get X (2*j)
+      )
+      val Y' = parallelColumn (alpha * alpha) X'
+      val Y = tabulate N (fn i =>
+        if i = 0 then
+          get X 0
+        else if isOdd i then
+          get Y' (i div 2)
+        else
+          get X i + alpha * get Y' (i div 2 - 1)
+      )
+    in
+      Y
+    end
+{% endhighlight %}
+</div>
+
+<div class="remark">
+This is very similar to computing
+[parallel prefix sums](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
+The algorithm discussed here is a generalization.
+</div>
+
 
 ## All-pass Filter
 
