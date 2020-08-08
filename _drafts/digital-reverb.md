@@ -92,13 +92,14 @@ Essentially, a comb filter combines two effects: attenuation and delay.
 
 If we were working with analog circuitry, we can achieve both effects at
 the same time with a simple feedback loop, as shown below. Each time around
-the loop, the signal is delayed and attenuated. The amount of delay and
-attenuation is configurable. In this case, the attenuation parameter
-$$\alpha \in [0,1]$$ is shown explicitly below.
+the loop, the signal is delayed and attenuated, and these effects are
+configurable. In this case, an attenuation parameter $$\alpha \in [0,1]$$ is
+shown explicitly below.
 
 <img width="70%" src="/assets/reverb/comb.svg">
 
 # Sequential Comb Algorithm
+{: #seq-comb}
 
 To get a sequential algorithm for a comb filter, we can imagine feeding
 samples through the analog circuit shown above. One-by-one, we take a sample
@@ -106,10 +107,15 @@ from the input, add to it the value of the feedback loop, and then pass this
 along to the output. The values in the feedback loop are easy to retrieve,
 because these values were output previously.
 
+In total, this performs $$O(N)$$ operations on an input of size $$N$$, which
+is optimal---asymptotically, we can't do any better.
+
 <div class="algorithm">
 Here is the
 [`mpl`](https://github.com/mpllang/mpl)
-code for this algorithm. We represent the input and output signals as
+code for the sequential comb algorithm.
+
+We represent the input and output signals as
 sequences of samples, where each sample is a number in the range
 $$[-1,+1]$$. Sequences are basically just arrays; we write `alloc n` allocate a
 fresh (uninitialized) sequence of length `n`, and get and set the $$i^\text{th}$$
@@ -126,7 +132,7 @@ fun sequentialComb (D: int) (a: real) (S: real seq) =
     val C = alloc n
   in
     for (0, n) (fn i =>
-      (* this is executed for each i from 0 to n-1 *)
+      (* this is executed once for each i from 0 to n-1 *)
       if i < D then
         set C i (get S i)
       else
@@ -138,7 +144,11 @@ fun sequentialComb (D: int) (a: real) (S: real seq) =
 {% endhighlight %}
 </div>
 
-# A Simple (But Inefficient) Parallel Comb
+# Highly Parallel (But Work-Inefficient) Comb
+{: #simple-par-comb}
+
+TODO: Remove this section? Not super interesting...
+{: style="color:red"}
 
 For a sequence of samples $$S$$, attenuation $$\alpha$$, and delay duration
 $$D$$ (measured in samples), the combed samples $$C$$ are given
@@ -149,7 +159,7 @@ C[i] = \sum_{j=0}^{\lfloor i / D \rfloor} \alpha^j S[i - jD]
 $$
 
 This formula essentially describes a naive parallel algorithm where
-each element of the outpt is computed as a sum of $$i/D$$ terms from
+each element of the output is computed as a sum of $$i/D$$ terms from
 the input. In terms of
 [work and span](https://en.wikipedia.org/wiki/Analysis_of_parallel_algorithms),
 computing each element in this manner takes $$O(i/D)$$ work
@@ -162,16 +172,54 @@ of the two sets in parallel, and then adding the results. This takes
 linear work and logarithmic span.
 </div>
 
-In total, this adds up to $$O(n^2 / D)$$ work
-and $$O(\log (n/D))$$ span for an input of size $$n$$.
-**Although the span is good, the work of this
-naive algorithm is too expensive.** In comparison, the sequential comb
-algorithm described above takes only $$O(n)$$ work, so this simple parallel
-algorithm is *work-inefficient* by a factor of $$O(n/D)$$. For small values
-of $$D$$, this is especially bad, and small values of $$D$$ are going to be
-the norm for our ultimate reverb algorithm! **We need a better algorithm.**
+In total, for an input of size $$N$$, this adds up to $$O(N^2 / D)$$ work
+and $$O(\log (N/D))$$ span.
+**Although the span is good, this parallel algorithm is too expensive.**
+We call it ***work-inefficient***, because it does
+asymptotically more work than the
+fastest comparable sequential algorithm, which we already
+[demonstrated above](#seq-comb) only needs $$O(N)$$ work.
 
-# A
+# Work-Efficient (But High Span) Parallel Comb
+{: #par-columns-comb}
+
+Another way to describe the comb filter is recursively, as follows.
+
+$$
+C[i] = S[i] + \alpha C[i - D]
+$$
+
+There are $$D$$ completely independent computations hidden within this
+formula. It's helpful to visualize this by laying out $$C$$ in a matrix,
+where at row $$i$$ and column $$j$$ we put $$C[iD + j]$$.
+In this layout, each column can be computed independently of every other
+column. For example, as soon as we know the value of $$C[2]$$, we can
+immediately compute $$C[D+2]$$ and then $$C[2D+2]$$ (etc.) without knowing
+any of the values in the other columns.
+
+<img width="60%" src="/assets/reverb/comb-columns.svg">
+
+This observation about independent columns immediately suggests
+one possible algorithm:
+we can do the columns in parallel, and within each column work sequentially
+from top to bottom. This approach
+is work-efficient, performing in total $$O(N)$$ operations. The span however
+is high: each column contains $$\lceil N / D \rceil$$ elements, leaving us with
+$$O(N/D)$$ span. For small values of $$D$$, this algorithm is not very
+parallel at all.
+
+**Is it possible to reduce the span?** Ideally, we'd like
+to have logarithmic span (like the
+[simple parallel algorithm described above](#simple-par-comb)) without
+increasing the work.
+
+# Work-Efficient, Highly Parallel Comb
+
+In the work-efficient parallel algorithm
+[described above](#par-columns-comb), each column is computed independently.
+At first, it might appear as thought the computation within
+a column is entirely sequential. However, it turns out that there is quite
+a lot of parallelism available.
 
 ## All-pass Filter
 

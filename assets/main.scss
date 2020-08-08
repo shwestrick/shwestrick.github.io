@@ -13,6 +13,10 @@ pre, code {
   background-color: #fdfdfd;
 }
 
+pre code {
+  font-size: 12pt;
+}
+
 pre {
   border: none;
 }
@@ -46,39 +50,49 @@ table.images img {
 .algorithm:before {
   content: 'Algorithm';
   font-weight: bold;
+  font-size: 105%;
 }
 
 .algorithm {
   border-top: 1px solid #3193cc;
-  border-left: 5px solid #3193cc;
+  border-left: 8px solid #3193cc;
   border-bottom: 1px solid #3193cc;
   border-right: 1px solid #3193cc;
   width: auto;
   padding: 5px;
   padding-left: 15px;
-  background: #fdfdfd;
+  background: #fbfeff;
   border-radius: 5px;
-  margin: 1em;
+  margin: 2em;
   margin-left: 3em;
   margin-right: 3em;
+}
+
+.algorithm pre {
+  background: #fbfeff;
+}
+
+.algorithm pre code {
+  background: #fbfeff;
 }
 
 .remark:before {
   content: 'Remark';
   font-weight: bold;
+  font-size: 105%;
 }
 
 .remark {
-  border-top: 1px solid #3193cc;
-  border-left: 5px solid #3193cc;
-  border-bottom: 1px solid #3193cc;
-  border-right: 1px solid #3193cc;
+  border-top: 1px solid #983dfb;
+  border-left: 8px solid #983dfb;
+  border-bottom: 1px solid #983dfb;
+  border-right: 1px solid #983dfb;
   width: auto;
   padding: 5px;
   padding-left: 15px;
-  background: #fdfdfd;
+  background: #faf5ff;
   border-radius: 5px;
-  margin: 1em;
+  margin: 2em;
   margin-left: 3em;
   margin-right: 3em;
 }
@@ -108,7 +122,6 @@ table.images img {
   }
 }
 
-/* Code highlighting adapted from Pygments GitHub style. */
 .highlight .hll { background-color: #ffffcc }
 .highlight .c { color: #8f5902; font-style: italic } /* Comment */
 .highlight .err { color: #a40000; border: 1px solid #ef2929 } /* Error */
