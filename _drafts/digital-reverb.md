@@ -92,16 +92,19 @@ Essentially, a comb filter combines two effects: attenuation and delay.
 
 If we were working with analog circuitry, we can achieve both effects at
 the same time with a simple feedback loop, as shown below. Each time around
-the loop, the signal is delayed (by some number of samples $$D$$, not shown)
-and attenuated (by multiplying with $$\alpha \in [0,1]$$).
+the loop, the signal is delayed
+and attenuated (scaled by some $$\alpha \in [0,1]$$).
 
 <img width="70%" src="/assets/reverb/comb.svg">
 
-Another way of describing this circuit is with the following equation, where
+**Comb Filter Equation**.
+When we discrete into samples, the analog circuit can be described
+mathematically as the following equation, where
 we write $$S[i]$$ for the $$i^\text{th}$$ sample of the input,
 and similarly $$C[i]$$ for a sample of the output. The constants
-$$D$$ and $$\alpha$$ are respectively the delay and
+$$D$$ and $$\alpha$$ are respectively the delay (measured in samples) and
 attenuation parameters.
+{: #comb-equation}
 
 $$
 C[i] =
@@ -113,17 +116,23 @@ $$
 # Sequential Comb Algorithm
 {: #seq-comb}
 
-To get a sequential algorithm for a comb filter, we can imagine feeding
-samples through the analog circuit shown above. One-by-one, we take a sample
-from the input, add to it the value of the feedback loop, and then pass this
-along to the output. The values in the feedback loop are easy to retrieve,
-because these values were output previously.
+Imagine feeding samples through the analog circuit shown above. One-by-one, we
+take a sample from the input, add to it the value of the feedback loop, and then
+pass this along to the output. The values in the feedback loop are easy to
+retrieve, because these values were output previously.
 
-Essentially, this computes the comb filter via the equation
-$$C[i] = S[i] + \alpha C[i - D]$$, proceeding sequentially with
-increasing values of $$i$$. In total, we perform $$O(N)$$ operations on an
+Essentially, this computes a comb filter by producing values
+$$C[i]$$ with the [equation given above](#comb-equation) in increasing order of
+$$i$$ starting with $$i=0$$. In total, we perform $$O(N)$$ operations on an
 input of size $$N$$, which is optimal---asymptotically, we can't do any better.
 
+<div class="algorithm" name="(Sequential Comb Filter)">
+On input $$S$$ of length $$N$$, sequentially output values $$C[i]$$ according
+to [comb filter equation](#comb-equation) for each $$i$$ from $$0$$
+to $$N$$.
+</div>
+
+<!--
 <div class="algorithm">
 Here is the
 [`mpl`](https://github.com/mpllang/mpl)
@@ -157,6 +166,7 @@ fun sequentialComb (D: int) (a: real) (S: real seq) =
   end
 {% endhighlight %}
 </div>
+-->
 
 # Parallelizing Across Columns
 {: #par-columns-comb}
@@ -185,6 +195,11 @@ is high: each column contains up to $$\lceil N / D \rceil$$ elements, leaving us
 with $$O(N/D)$$ span. For small values of $$D$$, this algorithm is not very
 parallel at all!
 
+**Is it possible to reduce the span?** The answer is yes!
+In the [next section](#geometric-prefix-sums), I'll describe how we can get
+more parallelism out of a single column with a parallel algorithm for
+*geometric prefix-sums*.
+
 <div class="remark">
 [Work and span](https://en.wikipedia.org/wiki/Analysis_of_parallel_algorithms)
 are abstract cost measures of a parallel algorithm. The ***work*** is the
@@ -199,17 +214,96 @@ makes fast progress on the overall work, but there must be at least $$S$$ steps
 overall.
 </div>
 
-**Is it possible to reduce the span?** Ideally, we'd like
-to have logarithmic span (like the
-[simple parallel algorithm described above](#simple-par-comb)) without
-increasing the work.
-
-# Parallelizing Within Columns
+# Parallelizing Within Columns (Geometric Prefix-Sums)
+{: #geometric-prefix-sums }
 
 At first, it might appear as though the computation within
 a column is entirely sequential. However, it turns out that there is quite
-a lot of parallelism available.
+a lot of parallelism available, similar to
+[parallel prefix sums](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
 
+The input elements on the $$j^\text{th}$$ column are elements $$S[iD+j]$$,
+and the outputs are $$C[iD+j]$$. Let's simplify by setting $$X[i] = S[iD+j]$$.
+Then, abstractly, the problem we're trying to solve is to produce a sequence
+$$Y$$ where $$Y[i] = C[iD+j]$$, i.e. the desired output.
+
+With this setup, the [comb filter equation](#comb-equation) gives us the
+following recurrence for $$Y$$.
+
+$$
+Y[i] = \begin{cases} X[0], &i = 0 \\ X[i] + \alpha Y[i-1], &i > 0 \end{cases}
+$$
+
+We can now unroll this recurrence to see that each output element is a
+prefix-sum of inputs scaled by powers of $$\alpha$$.
+
+$$
+Y[i] = \sum_{k=0}^i \alpha^{i-k} X[k]
+$$
+
+Let's call this problem the ***geometric prefix-sums problem***. We
+can solve it with following algorithm, which is adapted from an algorithm
+for
+[parallel prefix sums](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
+
+<div class="algorithm" id="alg-geometric-prefix-sums" name="(Parallel Geometric Prefix-Sums)">
+For inputs $$\alpha$$ and $$X$$ and output $$Y$$, we do three steps.
+1. In parallel, combine input elements in "blocks" of size 2. Each block
+of $$X[i]$$ and $$X[i+1]$$ is transformed into $$\alpha X[i] + X[i+1]$$. These are called the
+***block-sums***. Note that there are half as many block-sums as input values,
+so we've reduced the problem in half.
+2. Recursively compute the geometric prefix-sums of the block-sums.
+In the recursive call, we scale by $$\alpha^2$$ instead of $$\alpha$$.
+The results of this step are the *odd indices of* $$Y$$.
+3. "Expand" to fill in the missing (even) indices by computing
+$$Y[i] = X[i] + \alpha Y[i-1]$$ for each even $$i$$.
+(The value $$Y[i-1]$$ is one of the outputs of the previous step!)
+</div>
+
+Here's an example for an input of size 6.
+value $$Y[3]$$ is computed as $$\alpha^2 B_0 + B_1$$, where
+$$B_0 = \alpha X[0] + X[1]$$ is the first block-sum, and
+$$B_1 = \alpha X[2] + X[3]$$ is the second block-sum.
+
+<img width="80%" src="/assets/reverb/prefix-sums-contraction.svg">
+
+Note that the results of the recursive call are *geometric prefix-sums of
+block-sums*. For example, $$Y[3]$$ is the geometric prefix-sum
+(using $$\alpha^2$$) of two block-sums (using $$\alpha$$):
+
+<img width="55%" src="/assets/reverb/y3-breakdown.svg">
+
+**Granularity Control**.
+This algorithm works for any block-size,
+giving us an opportunity for
+[granularity control](https://en.wikipedia.org/wiki/Granularity_%28parallel_computing%29).
+For a block-size $$B$$, we need to use a scaling factor of
+$$\alpha^B$$ in the recursive step (instead of $$\alpha^2$$ as originally
+described). Producing
+the missing indices in the "expansion" step is also slightly more involved: the
+first value within each output block is the same as before, but then we need
+to continue scanning through the block to fill in the other nearby missing
+indices.
+
+**Cost**.
+On an input of size $$M$$, the
+[geometric prefix-sums algorithm](#alg-geometric-prefix-sums)
+has $$O(M)$$ work and $$O(\log M)$$ span.
+
+# All Together: A Work-Efficient, Highly-Parallel Comb Filter
+
+Combining the two ideas above
+(parallelism [across columns](#par-columns-comb) and
+[within columns](#geometric-prefix-sums)), we get an algorithm for computing
+the comb filter with $$O(N)$$ work and $$O(\log(N/D))$$ span.
+
+<div class="algorithm" name="(Parallel Comb Filter)">
+On input $$S$$,
+[split the input into columns](#par-columns-comb) and then in parallel compute
+the [geometric prefix-sums](#geometric-prefix-sums) of the columns.
+</div>
+
+<!--
 Concretely, the problem we're trying to solve is to take a column of input
 values $$\langle S[i], S[i+D], S[i+2D], \ldots \rangle$$
 and produce a column of output values
@@ -323,12 +417,7 @@ fun parallelColumn (alpha: real) (X: real seq) =
     end
 {% endhighlight %}
 </div>
-
-<div class="remark">
-This is very similar to computing
-[parallel prefix sums](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
-The algorithm discussed here is a generalization.
-</div>
+-->
 
 
 ## All-pass Filter

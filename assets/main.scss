@@ -48,7 +48,7 @@ table.images img {
 }
 
 .algorithm::before {
-  content: 'Algorithm';
+  content: 'Algorithm ' attr(name);
   font-weight: bold;
   font-size: 14pt;
   display: block;
