@@ -41,6 +41,7 @@ minima:
 theme: minima
 plugins:
   - jekyll-feed
+  - jemoji
 
 kramdown:
   parse_block_html: true
