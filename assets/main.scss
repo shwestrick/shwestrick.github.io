@@ -39,12 +39,28 @@ table.images {
   text-align: center;
 }
 
+table.images tr {
+  background-color: #fdfdfd;
+}
+
 table.images td {
   border: none;
 }
 
 table.images img {
   width: 100%;
+}
+
+// table.images p {
+//   border-bottom: 2px solid #76bfec;
+//   padding: 10px;
+//   margin: 0px;
+// }
+
+audio {
+  border-radius: 5px;
+  width: 100%;
+  margin: 0px;
 }
 
 .algorithm::before {
