@@ -14,7 +14,8 @@ during his time at [Bell Labs](https://en.wikipedia.org/wiki/Bell_Labs).
 This circuit simulates
 the acoustic effect of a particular space---such as a concert
 hall or cathedral---using only two components:
-***comb*** and ***all-pass*** filters.
+[***comb***](https://en.wikipedia.org/wiki/Comb_filter) and
+[***all-pass***](https://en.wikipedia.org/wiki/All-pass_filter) filters.
 
 <img width="80%" src="/assets/reverb/design.svg">
 
@@ -37,11 +38,13 @@ At a high level, there were three key observations.
   1. If you have a fast algorithm for a comb filter, then you get a fast
   [all-pass algorithm for free](#all-pass-with-comb).
 
-  2. The comb filter can be broken up into multiple instances of a problem
-  similar to
+  2. The
+  [comb filter can be broken up](#par-columns-comb)
+  into multiple instances of a problem similar to
   [parallel prefix-sums](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
   I call this sub-problem ***geometric prefix-sums*** and
-  [describe an algorithm for it below](#geometric-prefix-sums).
+  [describe an algorithm for it below](#geometric-prefix-sums). Putting
+  the pieces together, this gives us a theoretically efficient comb algorithm.
 
   3. In order to make the comb algorithm fast in practice, I needed
   to make some adjustments for better *granularity control* and *data locality*.
@@ -53,13 +56,6 @@ You can see my original source code
 and more recent improvements
 [here](https://github.com/MPLLang/mpl/commit/7fee9cdfce3fe56596ba93e25159b17aeef9e090).
 I hope you have as much fun reading through this as I did working on it.
-
-## An All-pass is a Fancy Comb
-{: #all-pass-with-comb}
-
-<img style="margin-bottom:20px" width="80%" src="/assets/reverb/comb.svg">
-
-<img width="80%" src="/assets/reverb/allpass.svg">
 
 <!--
 ## What is Reverb?
@@ -181,7 +177,8 @@ the intended meaning is that $$S[i] = 0$$ for all $$i < 0$$, and otherwise
 $$S[0] = x$$, $$S[1] = y$$, $$S[2] = z$$, etc.
 -->
 
-## Comb Filter
+## What is a Comb Filter?
+{: #comb-filter}
 
 A [feedback comb filter](https://en.wikipedia.org/wiki/Comb_filter#Feedback_form)
 produces many equally-spaced echoes of a sound, where each echo is
@@ -201,36 +198,102 @@ Essentially, a comb filter combines two effects: attenuation and delay.
 </tr>
 </table>
 
-Working with analog circuitry, we can achieve both effects at
-the same time with a simple feedback loop, as shown below. Each time around
-the loop, the signal is delayed
-and attenuated (scaled by some $$\alpha \in [0,1]$$).
+If a large enough delay between echoes is used, the effect of a comb filter
+is essentially the same as the looping "delay" effect which is sometimes
+used by musicians (particularly electric guitarists, for example with
+an
+[effect pedal](https://en.wikipedia.org/wiki/Delay_(audio_effect)#Digital_delay)).
+But when the delay is small---say, on the order
+of milliseconds---the effect of a comb filter is primarily "spectral", causing
+us to perceive it as modifying the
+[quality of the sound](https://en.wikipedia.org/wiki/Timbre) itself.
 
-<img width="70%" src="/assets/reverb/comb.svg">
+<table class="images">
+<tr class="shrink ralign">
+  <td>original</td>
+  <td>
+    <audio controls>
+      <source src="/assets/reverb/priorities.mp3" type="audio/mp3">
+      Your browser does not support audio playback.
+    </audio>
+  </td>
+</tr>
+
+<tr class="shrink ralign">
+  <td>half-second delay</td>
+  <td>
+    <audio controls>
+      <source src="/assets/reverb/priorities-5.mp3" type="audio/mp3">
+      Your browser does not support audio playback.
+    </audio>
+  </td>
+</tr>
+
+<tr class="shrink ralign">
+  <td>10 millisecond delay</td>
+  <td>
+    <audio controls>
+      <source src="/assets/reverb/priorities-01.mp3" type="audio/mp3">
+      Your browser does not support audio playback.
+    </audio>
+  </td>
+</tr>
+</table>
+
+<div class="remark">
+The name "comb filter" comes from the effect that the comb filter has
+in the [frequency domain](https://en.wikipedia.org/wiki/Frequency_domain):
+it results in equally spaced peaks, like the tines of a comb.
+</div>
+
+Working with analog circuitry, a comb filter can be implemented with
+a simple feedback loop, as shown below. Each time around
+the loop, the signal is delayed and attenuated (scaled by some $$\alpha \in
+[0,1]$$).
+
+<img width="65%" src="/assets/reverb/comb.svg">
 
 **Comb Filter Equation**.
-When working with a [sampled signal](https://en.wikipedia.org/wiki/Sampling_%28signal_processing%29),
-a comb filter can be defined by the following equation.
-We write $$S[i]$$ for the $$i^\text{th}$$ sample of the input,
+Mathematically, a comb filter can be defined by the following equation.
+We write $$S[i]$$ for the $$i$$<sup>th</sup> sample of the input,
 and similarly $$C[i]$$ for a sample of the output. The constant $$D$$ is
 the delay (measured in samples) between echoes, and
 $$\alpha \in [0,1]$$ controls the intensity of each successive echo.
 {: #comb-equation}
 
 $$
-C[i] =
-\begin{cases}
-  S[i], &i < D \\
-  S[i] + \alpha C[i - D], &\text{otherwise} \end{cases}
+C[i] = S[i] + \alpha C[i - D]
 $$
 
-## All-pass Filter
+## All-Pass Filters Are Fancy Combs
+{: #all-pass-with-comb}
 
-<img width="80%" src="/assets/reverb/allpass.svg">
+An [all-pass filter](https://en.wikipedia.org/wiki/All-pass_filter) is very
+similar to a comb filter, except that it allows all frequencies of the input to
+"pass through" unmodified. With an analog circuit, we can implement an
+all-pass filter as follows.
 
-An all-pass filter is essentially just a comb filter with some extra
-machinery.
+<img width="75%" src="/assets/reverb/allpass.svg">
 
+This circuit uses a feedback loop, just like the comb filter.
+And if we squint, this feedback loop starts to look suspicously like a
+comb filter itself.
+In fact, if we rearrange things slightly, we can just implement an all-pass
+filter directly with a comb:
+
+<img width="75%" src="/assets/reverb/allpass-with-comb.svg">
+
+Or, mathematically saying the same thing (where $$S$$ is the input, $$C$$
+is the combed input, and $$A$$ is the output of the all-pass):
+
+$$
+A[i] = -\alpha S[i] + (1-\alpha^2) C[i-D]
+$$
+
+This is good news, because now we can focus on just implementing the comb
+filter. Once we have it, we get an all-pass filter essentially for free.
+
+<!--
 ## Sequential Comb Filter
 {: #seq-comb}
 
@@ -248,6 +311,7 @@ to $$N$$.
 
 In total, this algorithm perform $$O(N)$$ operations on an
 input of size $$N$$, which is optimal---asymptotically, we can't do any better.
+-->
 
 <!--
 <div class="algorithm">
@@ -294,18 +358,17 @@ The parallel algorithm described here is based on two ideas.
   (the delay parameter).
   1. Next, I describe how to solve a
   [single column in parallel](#geometric-prefix-sums). I call this problem
-  the ***geometric prefix-sums*** problem, and describe how to solve it by
-  adapting a well-known algorithm for
+  the ***geometric prefix-sums*** problem, and describe an algorithm for it
+  by adapting a well-known algorithm for
   [parallel prefix-sums](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
 
 Combining the two ideas above, we get an algorithm for computing
 the comb filter with $$O(N)$$ work and $$O(\log(N/D))$$ span, which is
 work-efficient (asymptotically, it performs the same amount of work as the
-fastest [sequential algorithm](#seq-comb)) and highly parallel.
+fastest possible sequential algorithm) and highly parallel.
 
 <div class="algorithm" name="(Parallel Comb Filter)">
-On input $$S$$,
-[split the input into columns](#par-columns-comb) and then in parallel compute
+[Split the input into columns](#par-columns-comb) and then in parallel compute
 the [geometric prefix-sums](#geometric-prefix-sums) of the columns.
 </div>
 
@@ -323,11 +386,11 @@ makes fast progress on the overall work, but there must be at least $$S$$ steps
 overall.
 </div>
 
-# Parallelizing Across Columns
+# Splitting Into Columns
 {: #par-columns-comb}
 
 Let's look more closely at the
-equation $$C[i] = S[i] + \alpha C[i - D]$$. Lurking in plain sight, this
+[comb filter equation](#comb-equation) $$C[i] = S[i] + \alpha C[i - D]$$. Lurking in plain sight, this
 equation contains $$D$$ completely independent computations which can
 be computed in parallel.
 
@@ -342,8 +405,7 @@ $$C[2]$$, we can immediately compute $$C[D+2]$$ and then $$C[2D+2]$$, etc.
 
 Since the columns are independent of one another, we can compute them in
 parallel. But what do we do inside each column? We could proceed sequentially
-from top to bottom, similar to the [sequential algorithm](#seq-comb) but
-jumping by $$D$$ indices on each step; however, this does not provide
+from top to bottom... however, this does not provide
 enough parallelism. One column
 contains up to $$\lceil N / D \rceil$$ elements, leaving us
 with $$O(N/D)$$ span, which for small values of $$D$$ is not very parallel
@@ -353,14 +415,10 @@ Ideally, we'd like to be able to do a single column in logarithmic
 span, say $$O(\log(N/D))$$. In turns out this is possible! In the next section,
 I describe how.
 
-# Parallelizing Within Columns
+# Parallelizing Each Column
 {: #geometric-prefix-sums }
 
-At first, it might appear as though the computation within
-a column is entirely sequential. However, it turns out that there is quite
-a lot of parallelism available.
-In this section, I show how each column is essentially
-a variant of the
+In this section, I show how each column is essentially a variant of the
 [prefix-sums problem](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms)
 and describe how to adapt a well-known algorithm.
 
@@ -375,7 +433,7 @@ With this setup, the [comb filter equation](#comb-equation) gives us the
 following recurrence for $$Y$$.
 
 $$
-Y[i] = \begin{cases} X[0], &i = 0 \\ X[i] + \alpha Y[i-1], &i > 0 \end{cases}
+Y[i] = X[i] + \alpha Y[i-1]
 $$
 
 If we unroll this recurrence, we can see that each output element is a
@@ -414,7 +472,7 @@ block-sums*. For example, $$Y[3]$$ is the geometric prefix-sum
 
 <img width="55%" src="/assets/reverb/y3-breakdown.svg">
 
-**Granularity Control**.
+<!-- **Granularity Control**.
 This algorithm works for any block-size,
 giving us an opportunity for
 [granularity control](https://en.wikipedia.org/wiki/Granularity_%28parallel_computing%29).
@@ -424,15 +482,14 @@ described). Producing
 the missing indices in the "expansion" step is also slightly more involved: the
 first value within each output block is the same as before, but then we need
 to continue scanning through the block to fill in the other nearby missing
-indices.
+indices. -->
 
 **Work and Span**.
 On an input of size $$M$$, the
 [geometric prefix-sums algorithm](#alg-geometric-prefix-sums)
-recursively uses a problem of size $$M/2$$ (or $$M/B$$ in general, for
-a block-size of $$B$$) and otherwise does $$O(M)$$ work, all of which is
-fully parallel. This yields the following work and span recurrences,
-which solve to $$O(M)$$ work and $$O(\log M)$$ span.
+recursively uses a problem of size $$M/2$$ and otherwise does $$O(M)$$ work,
+all of which is fully parallel. This yields the following work and span
+recurrences, which solve to $$O(M)$$ work and $$O(\log M)$$ span.
 * Work $$W(M) = W(M/2) + O(M)$$.
 * Span $$S(M) = S(M/2) + O(1)$$.
 
