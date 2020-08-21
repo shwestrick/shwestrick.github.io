@@ -4,19 +4,64 @@ title:  "Digital Reverb: Fast Comb Filters Are All You Need"
 mathjax: true
 ---
 
-Generating convincing reverb turns out to be surprisingly simple, but making
-it fast is not quite as easy!
+While browsing through
+[The Computer Music Tutorial](https://mitpress.mit.edu/books/computer-music-tutorial)
+by
+[Curtis Roads](https://en.wikipedia.org/wiki/Curtis_Roads),
+I came across a beautifully simple *reverberator* circuit, designed by
+[Manfred Schroeder](https://en.wikipedia.org/wiki/Manfred_R._Schroeder)
+during his time at [Bell Labs](https://en.wikipedia.org/wiki/Bell_Labs).
+This circuit simulates
+the acoustic effect of a particular space---such as a concert
+hall or cathedral---using only two components:
+***comb*** and ***all-pass*** filters.
 
-In this post, I describe what a
-[comb filter](https://en.wikipedia.org/wiki/Comb_filter)
-is and how, by combining a bunch of these filters together, we can create
-a digital reverberator. I then dive into some of the dirty details
-of making the comb filter super fast, including designing a
-parallel algorithm and optimizing it for practical efficiency.
-I originally developed this algorithm as a parallel benchmark for
-[`mpl`](https://github.com/mpllang/mpl), the compiler I'm developing at
-Carnegie Mellon University. You can see the [source code on GitHub](??).
+<img width="80%" src="/assets/reverb/design.svg">
 
+Seeing this design, my first thought was how fun it would be to turn it into
+a fast parallel algorithm. Mostly, I just wanted to satisfy my own curiosity.
+But I ended up having so much fun with this problem that soon enough, I found
+myself deep in the rabbit hole of writing code and running experiments.
+Ultimately, I got something valuable out of all of this:
+another parallel benchmark for
+[`mpl`](https://github.com/mpllang/mpl), a compiler I'm
+developing at Carnegie Mellon University.
+So, I don't feel too bad about
+my post-rationalization of time spent on this project as "research"
+:sunglasses:.
+
+In this post, I describe the algorithm I came up
+with and how I implemented it and optimized it.
+At a high level, there were three key observations.
+
+  1. If you have a fast algorithm for a comb filter, then you get a fast
+  [all-pass algorithm for free](#all-pass-with-comb).
+
+  2. The comb filter can be broken up into multiple instances of a problem
+  similar to
+  [parallel prefix-sums](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
+  I call this sub-problem ***geometric prefix-sums*** and
+  [describe an algorithm for it below](#geometric-prefix-sums).
+
+  3. In order to make the comb algorithm fast in practice, I needed
+  to make some adjustments for better *granularity control* and *data locality*.
+  This part is straightforward, but if you try to implement it, be warned: you
+  will soon be stuck in a hell of off-by-one index arithmetic errors.
+
+You can see my original source code
+[here](https://github.com/MPLLang/mpl/pull/122)
+and more recent improvements
+[here](https://github.com/MPLLang/mpl/commit/7fee9cdfce3fe56596ba93e25159b17aeef9e090).
+I hope you have as much fun reading through this as I did working on it.
+
+## An All-pass is a Fancy Comb
+{: #all-pass-with-comb}
+
+<img style="margin-bottom:20px" width="80%" src="/assets/reverb/comb.svg">
+
+<img width="80%" src="/assets/reverb/allpass.svg">
+
+<!--
 ## What is Reverb?
 
 Reverb is the effect that a room (or any space) has on sound. When a sound
@@ -66,6 +111,7 @@ the noise comes alive.
   </td>
 </tr>
 </table>
+-->
 
 <!-- <div class="remark">
 A brief sound is sometimes called an ***impulse***, and the sound of an
@@ -77,6 +123,7 @@ through a technique called
 [convolution reverb](https://en.wikipedia.org/wiki/Convolution_reverb).
 </div> -->
 
+<!--
 ## Schroeder's Reverberator
 
 The algorithm described here is one of many reverberators designed by
@@ -102,6 +149,7 @@ use four comb filters in parallel, followed by two allpass filters in series,
 as shown in the following diagram.
 
 <img width="80%" src="/assets/reverb/design.svg">
+-->
 
 <!--
 ## Sampling
