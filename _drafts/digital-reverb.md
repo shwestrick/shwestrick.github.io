@@ -8,32 +8,45 @@ While browsing through
 [The Computer Music Tutorial](https://mitpress.mit.edu/books/computer-music-tutorial)
 by
 [Curtis Roads](https://en.wikipedia.org/wiki/Curtis_Roads),
-I came across a beautifully simple *reverberator* circuit, designed by
-[Manfred Schroeder](https://en.wikipedia.org/wiki/Manfred_R._Schroeder)
-during his time at [Bell Labs](https://en.wikipedia.org/wiki/Bell_Labs).
-This circuit simulates
-the acoustic effect of a particular space---such as a concert
+I came across a beautifully simple *reverberator* circuit. This circuit
+simulates the acoustic effect of a particular space---such as a concert
 hall or cathedral---using only two components:
 [***comb***](https://en.wikipedia.org/wiki/Comb_filter) and
 [***all-pass***](https://en.wikipedia.org/wiki/All-pass_filter) filters.
 
 <img width="80%" src="/assets/reverb/design.svg">
 
-Seeing this design, my first thought was how fun it would be to turn it into
+<div class="remark">
+This design is fairly old; it's credited to
+[Manfred Schroeder](https://en.wikipedia.org/wiki/Manfred_R._Schroeder)
+during his time at [Bell Labs](https://en.wikipedia.org/wiki/Bell_Labs)
+in the mid 20<sup>th</sup> centure.
+From what I can tell, in modern
+[DAWs](https://en.wikipedia.org/wiki/Digital_audio_workstation),
+the dominant technique for simulating reverb is now
+based on [convolution](https://en.wikipedia.org/wiki/Convolution_reverb).
+</div>
+
+My first thought was how fun it would be to turn this circuit into
 a fast parallel algorithm. Mostly, I just wanted to satisfy my own curiosity.
-But I ended up having so much fun with this problem that soon enough, I found
-myself deep in the rabbit hole of writing code and running experiments.
-Ultimately, I got something valuable out of all of this:
-another parallel benchmark for
+But I got a little carried away, and soon enough, I found myself deep in
+the rabbit hole of writing code and running experiments. Ultimately,
+I turned this curiosity into another parallel benchmark for
 [`mpl`](https://github.com/mpllang/mpl), a compiler I'm
 developing at Carnegie Mellon University.
-So, I don't feel too bad about
+So, seeing how I got something valuable out of it, I don't feel too bad about
 my post-rationalization of time spent on this project as "research"
 :sunglasses:.
 
-In this post, I describe the algorithm I came up
-with and how I implemented it and optimized it.
-At a high level, there were three key observations.
+In this post, I describe the digital reverb algorithm I came up with,
+and how I implemented it to get good performance in
+practice. If you're curious to see source code, check out these on GitHub:
+[my initial work](https://github.com/MPLLang/mpl/pull/122),
+and
+[recent improvements](https://github.com/MPLLang/mpl/commit/7fee9cdfce3fe56596ba93e25159b17aeef9e090) (including the algorithm I describe
+below).
+
+At a high level, there were three key observations in this work.
 
   1. If you have a fast algorithm for a comb filter, then you get a fast
   [all-pass algorithm for free](#all-pass-with-comb).
@@ -51,11 +64,8 @@ At a high level, there were three key observations.
   This part is straightforward, but if you try to implement it, be warned: you
   will soon be stuck in a hell of off-by-one index arithmetic errors.
 
-You can see my original source code
-[here](https://github.com/MPLLang/mpl/pull/122)
-and more recent improvements
-[here](https://github.com/MPLLang/mpl/commit/7fee9cdfce3fe56596ba93e25159b17aeef9e090).
-I hope you have as much fun reading through this as I did working on it.
+I hope you have as much fun reading through this as I did working on
+it.
 
 <!--
 ## What is Reverb?
@@ -268,23 +278,29 @@ $$
 ## All-Pass Filters Are Fancy Combs
 {: #all-pass-with-comb}
 
-An [all-pass filter](https://en.wikipedia.org/wiki/All-pass_filter) is very
-similar to a comb filter, except that it allows all frequencies of the input to
-"pass through" unmodified. With an analog circuit, we can implement an
-all-pass filter as follows.
+An [all-pass filter](https://en.wikipedia.org/wiki/All-pass_filter)
+allows all frequencies of the input to
+"pass through" unmodified in strength, hence the name. The interesting feature
+of an all-pass filter is that it modifies the
+[phase](https://en.wikipedia.org/wiki/Phase_(waves)) of different frequencies,
+shifting them around, causing the original sound to become "mis-aligned".
+This is commonly used in electronic music to implement an effect
+called a [phaser](https://en.wikipedia.org/wiki/Phaser_(effect)).
+
+A typical analog implementation of an all-pass circuit might look like this:
 
 <img width="75%" src="/assets/reverb/allpass.svg">
 
-This circuit uses a feedback loop, just like the comb filter.
-And if we squint, this feedback loop starts to look suspicously like a
-comb filter itself.
-In fact, if we rearrange things slightly, we can just implement an all-pass
-filter directly with a comb:
+Looking closely, notice that the all-pass circuit uses a feedback loop
+which looks a lot like a comb filter. If
+we rearrange some things, we can see that essentially, an all-pass filter is
+just a comb filter with some extra machinery.
 
 <img width="75%" src="/assets/reverb/allpass-with-comb.svg">
 
-Or, mathematically saying the same thing (where $$S$$ is the input, $$C$$
-is the combed input, and $$A$$ is the output of the all-pass):
+Mathematically, the following equation is another way of saying the same
+thing. ($$S$$ is the input signal, $$C$$ is the result of combing the input, and
+$$A$$ is the output of the all-pass.)
 
 $$
 A[i] = -\alpha S[i] + (1-\alpha^2) C[i-D]
@@ -351,15 +367,18 @@ fun sequentialComb (D: int) (a: real) (S: real seq) =
 
 ## Parallel Comb Filter
 
+At a high level, the comb filter problem is to solve the
+[comb filter equation](#comb-equation) $$C[i] = S[i] + \alpha C[i - D]$$,
+where the inputs are $$S$$, $$\alpha$$, and $$D$$, and the output is $$C$$:
+
 The parallel algorithm described here is based on two ideas.
-  1. First, I describe how to [split the problem into independent "columns"](#par-columns-comb).
+  1. First, we [split the problem into independent "columns"](#par-columns-comb).
   These columns can be computed in parallel, however this does not expose
   enough parallelism on its own, especially for small values of $$D$$
   (the delay parameter).
-  1. Next, I describe how to solve a
-  [single column in parallel](#geometric-prefix-sums). I call this problem
-  the ***geometric prefix-sums*** problem, and describe an algorithm for it
-  by adapting a well-known algorithm for
+  1. Next, we [parallelize each column](#geometric-prefix-sums) by identifying
+  problem that I call ***geometric prefix-sums***, and solve this problem by
+  adapting a well-known algorithm for
   [parallel prefix-sums](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
 
 Combining the two ideas above, we get an algorithm for computing
@@ -381,9 +400,8 @@ must occur sequentially one-by-one).
 
 Given an algorithm with work $$W$$ and span $$S$$, using $$P$$ processors,
 we can execute that algorithm in $$O(W/P + S)$$ time. Intuitively,
-on each step we perform up to $$P$$ operations (one on each processor), which
-makes fast progress on the overall work, but there must be at least $$S$$ steps
-overall.
+on each step we perform up to $$P$$ operations (one on each processor),
+but there must be at least $$S$$ steps overall.
 </div>
 
 # Splitting Into Columns
