@@ -21,10 +21,9 @@ This design is fairly old; it's credited to
 [Manfred Schroeder](https://en.wikipedia.org/wiki/Manfred_R._Schroeder)
 during his time at [Bell Labs](https://en.wikipedia.org/wiki/Bell_Labs)
 in the mid 20<sup>th</sup> centure.
-From what I can tell, in modern
-[DAWs](https://en.wikipedia.org/wiki/Digital_audio_workstation),
-the dominant technique for simulating reverb is now
-based on [convolution](https://en.wikipedia.org/wiki/Convolution_reverb).
+From what I can tell, nowadays people are mostly using alternative
+techniques such as
+[convolution reverb](https://en.wikipedia.org/wiki/Convolution_reverb).
 </div>
 
 My first thought was how fun it would be to turn this circuit into
@@ -66,126 +65,6 @@ At a high level, there were three key observations in this work.
 
 I hope you have as much fun reading through this as I did working on
 it.
-
-<!--
-## What is Reverb?
-
-Reverb is the effect that a room (or any space) has on sound. When a sound
-is produced, it radiates from its source, hitting nearby surfaces and bouncing
-unpredictably until eventually it loses so much energy that you can no longer
-hear it.
-
-Each room behaves differently, depending on its size, its shape, and its
-contents. Compare, say, a bedroom closet to a cathedral.
-A closet is small and full of shirts and linens and other soft things. If you
-were to clap your hands, these soft objects would gobble up the noise, returning
-you almost immediately to silence. But in a cathedral, the space is wide open,
-and the walls are hard and far apart. When you clap your hands in a cathedral,
-the noise comes alive.
-
-<table class="images">
-<tr>
-  <td>
-    <p>Clap in a closet</p>
-  </td>
-  <td>
-    <p>Clap in a cathedral</p>
-  </td>
-</tr>
-
-<tr>
-  <td>
-    <img src="/assets/reverb/dry-clap.svg">
-  </td>
-  <td>
-    <img src="/assets/reverb/wet-clap.svg">
-  </td>
-</tr>
-
-<tr>
-  <td>
-    <audio controls>
-      <source src="/assets/reverb/dry-clap.mp3" type="audio/mp3">
-      Your browser does not support audio playback.
-    </audio>
-  </td>
-  <td>
-    <audio controls>
-      <source src="/assets/reverb/wet-clap.mp3" type="audio/mp3">
-      Your browser does not support audio playback.
-    </audio>
-  </td>
-</tr>
-</table>
--->
-
-<!-- <div class="remark">
-A brief sound is sometimes called an ***impulse***, and the sound of an
-impulse within a room is called an
-***[impulse response](https://en.wikipedia.org/wiki/Impulse_response)***.
-The impulse response of a room is a good summary of its reverb
-characteristics, and can be used to generate a convincing reverb effect
-through a technique called
-[convolution reverb](https://en.wikipedia.org/wiki/Convolution_reverb).
-</div> -->
-
-<!--
-## Schroeder's Reverberator
-
-The algorithm described here is one of many reverberators designed by
-[Manfred Schroeder](https://en.wikipedia.org/wiki/Manfred_R._Schroeder) during
-his time at Bell Labs. Schroeder presented multiple designs, but we will only
-be considering one of them here, as described by
-[Curtis Roads](https://en.wikipedia.org/wiki/Curtis_Roads) in
-[The Computer Music Tutorial](https://mitpress.mit.edu/books/computer-music-tutorial).
-
-Schroeder's design consists of two primary components: a *global reverator* and
-a *tapped delay*. The goal of the global reverberator is to simulate the
-overall response of a room, where there are thousands of echoes all
-mixed together into a lush soup so dense that no one echo is distinctly
-discernable. In contrast, the tapped delay produces just a few clearly distinct
-echoes which reflect the sound straight back to the listener, simulating
-a hard, flat wall in the back of the room. These are called
-"early reflections" because they arrive first, almost immediately after the
-original sound occurs. The global reverberation kicks in a moment later, and
-then gradually dies down.
-
-**Global Reverberator**. The overall design of the global reverberator is to
-use four comb filters in parallel, followed by two allpass filters in series,
-as shown in the following diagram.
-
-<img width="80%" src="/assets/reverb/design.svg">
--->
-
-<!--
-## Sampling
-
-Real-world audio signals are *analog*. We could model a signal mathematically
-by a function $$\mathbb{R} \to \mathbb{R}$$, but this doesn't immediately
-translate to a digital world. The next best approximation we can do is to
-***sample*** the signal at a regular frequency, and store the "heights"
-of these discrete samples.
-
-<img width="80%" src="/assets/reverb/sampling.svg">
-
-It may appear as though sampling a signal *loses
-information*, but surprisingly, this is not necessarily the case. In the
-first half of the 20<sup>th</sup> century, multiple mathematicians proved that
-you can perfectly reconstruct an analog signal as long as the ***sample rate***
-is high enough. This result is known is as the
-[Nyquist-Shannon sampling theorem](https://en.wikipedia.org/wiki/Nyquist%E2%80%93Shannon_sampling_theorem).
-
-In this post, we'll be dealing with signals represented as sequences $$S$$ of
-samples. Each $$S[i]$$ is one sample of the original signal.
-For simplicity we will assume that $$i \in \mathbb{Z}$$
-can be any integer, either positive or negative, extending as far as we
-need in either direction. (Note however that in practice, the sequence will be
-represented by an array and will "start" at index 0.)
-
-When we use the notation $$S = \langle x, y, z, \ldots \rangle$$,
-the intended meaning is that $$S[i] = 0$$ for all $$i < 0$$, and otherwise
-$$S[0] = x$$, $$S[1] = y$$, $$S[2] = z$$, etc.
--->
 
 ## What is a Comb Filter?
 {: #comb-filter}
@@ -309,76 +188,21 @@ $$
 This is good news, because now we can focus on just implementing the comb
 filter. Once we have it, we get an all-pass filter essentially for free.
 
-<!--
-## Sequential Comb Filter
-{: #seq-comb}
-
-Sequentially, we can implement a comb filter by producing values
-$$C[i]$$ in increasing order of
-$$i$$ using the [equation given above](#comb-equation). Along the way, we need
-to remember previous output values so that we can quickly retrieve the
-each $$C[i-D]$$.
-
-<div class="algorithm" name="(Sequential Comb Filter)">
-On input $$S$$ of length $$N$$, sequentially output values $$C[i]$$ according
-to [comb filter equation](#comb-equation) for each $$i$$ from $$0$$
-to $$N$$.
-</div>
-
-In total, this algorithm perform $$O(N)$$ operations on an
-input of size $$N$$, which is optimal---asymptotically, we can't do any better.
--->
-
-<!--
-<div class="algorithm">
-Here is the
-[`mpl`](https://github.com/mpllang/mpl)
-code for the sequential comb algorithm.
-
-We represent the input and output signals as
-sequences of samples, where each sample is a number in the range
-$$[-1,+1]$$. Sequences are basically just arrays; we write `alloc n` allocate a
-fresh (uninitialized) sequence of length `n`, and get and set the $$i^\text{th}$$
-value of a sequence $$S$$ with `get S i` and `set S i x`.
-
-{% highlight sml %}
-(* D: the number of samples to delay in the feedback loop
- * a: the attenuation constant, in range [0,1]
- * S: the sequence of input samples.
- *)
-fun sequentialComb (D: int) (a: real) (S: real seq) =
-  let
-    val n = length S
-    val C = alloc n
-  in
-    for (0, n) (fn i =>
-      (* this is executed once for each i from 0 to n-1 *)
-      if i < D then
-        set C i (get S i)
-      else
-        set C i (get S i + a * get C (i - D))
-    );
-
-    C
-  end
-{% endhighlight %}
-</div>
--->
-
 ## Parallel Comb Filter
 
 At a high level, the comb filter problem is to solve the
 [comb filter equation](#comb-equation) $$C[i] = S[i] + \alpha C[i - D]$$,
-where the inputs are $$S$$, $$\alpha$$, and $$D$$, and the output is $$C$$:
+where the inputs are $$S$$, $$\alpha$$, and $$D$$, and the output is $$C$$.
 
-The parallel algorithm described here is based on two ideas.
-  1. First, we [split the problem into independent "columns"](#par-columns-comb).
-  These columns can be computed in parallel, however this does not expose
-  enough parallelism on its own, especially for small values of $$D$$
-  (the delay parameter).
-  1. Next, we [parallelize each column](#geometric-prefix-sums) by identifying
-  problem that I call ***geometric prefix-sums***, and solve this problem by
-  adapting a well-known algorithm for
+The parallel algorithm I came up with is based on two ideas.
+  1. First, we can [split the problem into independent "columns"](#par-columns-comb).
+  These columns can computed in parallel, however this
+  does not expose enough parallelism on its own, especially for small values of
+  $$D$$ (the delay parameter).
+  1. Next, we can [parallelize each column](#geometric-prefix-sums). To do
+  so, we'll identify a problem called ***geometric prefix-sums***. Each column is
+  one instance of the geometric prefix-sums problem, and we can solve it
+  by adapting a well-known algorithm for
   [parallel prefix-sums](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
 
 Combining the two ideas above, we get an algorithm for computing
@@ -398,10 +222,10 @@ total number of operations performed, and the ***span*** is the number of
 operations on the critical path (i.e. the longest chain of operations that
 must occur sequentially one-by-one).
 
-Given an algorithm with work $$W$$ and span $$S$$, using $$P$$ processors,
-we can execute that algorithm in $$O(W/P + S)$$ time. Intuitively,
-on each step we perform up to $$P$$ operations (one on each processor),
-but there must be at least $$S$$ steps overall.
+Given an algorithm with work $$W$$ and span $$S$$, a computer with $$P$$
+processors can execute that algorithm in $$O(W/P + S)$$ time. Intuitively,
+on each step the computer executes up to $$P$$ operations (one on each
+processor), but there must be at least $$S$$ steps overall.
 </div>
 
 # Splitting Into Columns
@@ -515,118 +339,4 @@ Applying this to a column of
 size $$\lceil N/D \rceil$$, we have an algorithm for computing one column of
 the comb filter in $$O(N/D)$$ work and $$O(\log(N/D))$$ span. Nice!
 
-<!--
-Concretely, the problem we're trying to solve is to take a column of input
-values $$\langle S[i], S[i+D], S[i+2D], \ldots \rangle$$
-and produce a column of output values
-$$\langle C[i], C[i+D], C[i+2D], \ldots \rangle$$.
 
-<img width="40%" src="/assets/reverb/columns-in-out.svg">
-
-Let's simplify by renaming things a little. Let $$X$$ be the input, with
-$$X_0 = S[i]$$, $$X_1 = S[i+D]$$, $$X_2 = S[i+2D]$$, etc. Similarly, let $$Y$$
-be the output. Abstractly, then, the problem is to compute:
-
-$$Y_i = X_i + \alpha Y_{i-1}$$
-
-**A Contraction Algorithm**. The idea behind contraction is the solve a
-problem recursively, in terms of a smaller version of itself. Specifically,
-our goal here is to find new inputs $$X'$$ and $$\alpha'$$, and a new
-output $$Y'$$, such that the same equation holds again:
-
-$$Y_j' = X_j' + \alpha' Y_{j-1}'$$
-
-To get there, let's unroll the original equation a little:
-
-$$
-\begin{align*}
-  Y_i
-  &= X_i + \alpha Y_{i-1} \\
-  &= X_i + \alpha \color{red}{\left(X_{i-1} + \alpha Y_{i-2}\right)}
-  &&\text{(unroll definition of $Y_{i-1}$)} \\
-  &= \left(X_i + \alpha X_{i-1}\right) + \alpha^2 Y_{i-2}
-  &&\text{(rearrange)}
-\end{align*}
-$$
-
-Now we're getting somewhere! Do you see it? We can rename the indices a little
-to make it clear. Let's use a new index $$j$$ with $$2j+1 = i$$:
-
-$$
-\begin{align*}
-  Y_i &= \left(X_i + \alpha X_{i-1}\right) + \alpha^2 Y_{i-2}
-  \\
-  Y_\color{red}{2j+1} &= \left(X_\color{red}{2j+1} + \alpha X_{\color{red}{2j}}\right) + \alpha^2 Y_{\color{red}{2j-1}}
-  &&(\text{let}\ 2j+1 = i)
-  \\
-  \color{red}{Y_j'} &= \left(X_{2j} + \alpha X_{2j-1}\right) + \alpha^2 \color{red}{Y_{j-1}'}
-  &&(\text{let}\ Y_j' = Y_{2j+1})
-  \\
-  Y_j' &= \color{red}{X_j'} + \alpha^2 Y_{j-1}'
-  &&(\text{let}\ X_j' = X_{2j+1} + \alpha X_{2j})
-  \\
-  Y_j' &= X_j' + \color{red}{\alpha'} Y_{j-1}'
-  &&(\text{let}\ \alpha' = \alpha^2)
-\end{align*}
-$$
-
-This sets up the smaller instance of the problem. It is "smaller" in the sense
-that $$X'$$ and $$Y'$$ have half as many elements as $$X$$ and $$Y$$.
-
-The output of the smaller instance gives us a bunch of values $$Y_j'$$, which
-are each equal to $$Y_{2j+1}$$. That is, **the smaller instance provides the
-odd indices of the output**. That leaves us with needing to compute the
-even indices, which is easy: for every unknown value at an even index,
-there's a known value at the previous odd index which can be used to fill
-in the missing value.
-
-<div class="algorithm">
-We define a function
-$$\textsf{ParallelColumn}(\alpha, X, N)$$ for input $$X$$ of length $$N$$.
-The index arithmetic is outrageously tedious, but fairly straightforward.
-
-$$
-\begin{array}{l}
-&\textsf{ParallelColumn}(\alpha, X, N) =
-\\
-&~~~~\text{let}~~X' = \big\langle X[2j+1] + \alpha X[2j] : 0 \leq j < \lfloor N / 2 \rfloor \big\rangle
-  \\
-&~~~~\text{let}~~Y' = \textsf{ParallelColumn}(\alpha^2, X', \lfloor N / 2 \rfloor)
-  \\
-&~~~~\text{let}~~Y(i) =
-    \begin{cases}
-      X[0], &i = 0 \\
-      Y'[(i-1) / 2], &\text{$i$ odd} \\
-      X[i] + \alpha Y'[(i/2)-1], &\text{$i$ even}
-    \end{cases}
-  \\
-&~~~~\text{return}~~\big\langle Y(i) : 0 \leq i < N \big\rangle
-\end{array}
-$$
-
-In [`mpl`](https://github.com/mpllang/mpl), the code is as follows.
-{% highlight sml %}
-fun parallelColumn (alpha: real) (X: real seq) =
-  if length X <= 1 then
-    X
-  else
-    let
-      val N = length X
-      val X' = tabulate (N div 2) (fn j =>
-        get X (2*j+1) + alpha * get X (2*j)
-      )
-      val Y' = parallelColumn (alpha * alpha) X'
-      val Y = tabulate N (fn i =>
-        if i = 0 then
-          get X 0
-        else if isOdd i then
-          get Y' (i div 2)
-        else
-          get X i + alpha * get Y' (i div 2 - 1)
-      )
-    in
-      Y
-    end
-{% endhighlight %}
-</div>
--->
