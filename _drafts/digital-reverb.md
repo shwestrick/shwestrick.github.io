@@ -14,6 +14,7 @@ simulates the acoustic effect of a particular space---such as a concert
 hall or cathedral---using only two components:
 [***comb***](https://en.wikipedia.org/wiki/Comb_filter) and
 [***all-pass***](https://en.wikipedia.org/wiki/All-pass_filter) filters.
+The filters can be tuned to simulate a variety of different spaces.
 
 <img width="80%" src="/assets/reverb/design.svg">
 
@@ -27,16 +28,11 @@ techniques such as
 [convolution reverb](https://en.wikipedia.org/wiki/Convolution_reverb).
 </div>
 
-My first thought was how fun it would be to turn this circuit into
-a fast parallel algorithm---mostly, just to satisfy my own
-curiosity---but I got a little carried away. Soon enough, I found myself deep
-in the rabbit hole of writing code and running experiments. Ultimately,
-I ended up turning this little project into a parallel benchmark for
-the compiler I'm developing at Carnegie Mellon University, called
-[`mpl`](https://github.com/mpllang/mpl).
-So, seeing how I got something valuable out of this project,
-I don't feel too bad about my post-rationalization of time spent
-as "research". :sunglasses:
+My first thought was how fun it would be to turn this circuit
+into a parallel benchmark for
+[`mpl`](https://github.com/mpllang/mpl), the compiler I'm developing at
+Carnegie Mellon University. And soon enough, I found myself deep in the rabbit
+hole of writing code and running experiments.
 
 Here are the results. Impressive, for a circuit so simple!
 
@@ -62,20 +58,24 @@ Here are the results. Impressive, for a circuit so simple!
 </tr>
 </table>
 
-In this post, I describe the process of designing a parallel reverb algorithm
-based on this circuit, and how I implemented it to get good performance in
-practice. Luckily, early on, I noticed that if you have a fast algorithm for a
-comb filter, then you get a fast
-[all-pass algorithm for free](#all-pass-with-comb). So most of the effort
-went into
+**In this post, I describe the process of designing and implementing a fast
+parallel reverb algorithm**, based on the circuit shown above.
+At first, seeing as how the circuit is built
+from two components (comb and all-pass filters), it might seem that we need to
+design two algorithms.
+But it turns out that if you have a fast algorithm for a
+comb filter, then you essentially
+[already have a fast all-pass algorithm](#all-pass-with-comb), for free. So most
+of my effort went into
 [designing and implementing a fast comb filter](#par-comb-section).
-If you're curious to see source code, check out these on GitHub:
-[my initial work](https://github.com/MPLLang/mpl/pull/122),
+
+Feel free to [leave a note below](#respond) if you have any questions
+or comments. If you're curious to see source code, check out
+[my initial work](https://github.com/MPLLang/mpl/pull/122)
 and
 [recent improvements](https://github.com/MPLLang/mpl/commit/7fee9cdfce3fe56596ba93e25159b17aeef9e090)
-(which includes the algorithm I describe below).
+(including the algorithm I describe below) on GitHub.
 
-If you have any questions or comments, [leave a note below](#respond).
 I hope you have as much fun reading through this as I did working on it!
 
 ## What is a Comb Filter?
@@ -121,7 +121,7 @@ us to perceive it as modifying the
 </tr>
 
 <tr class="shrink ralign">
-  <td>half-second delay</td>
+  <td>half-second comb</td>
   <td>
     <audio controls>
       <source src="/assets/reverb/priorities-5.mp3" type="audio/mp3">
@@ -131,7 +131,7 @@ us to perceive it as modifying the
 </tr>
 
 <tr class="shrink ralign">
-  <td>10 millisecond delay</td>
+  <td>10 millisecond comb</td>
   <td>
     <audio controls>
       <source src="/assets/reverb/priorities-01.mp3" type="audio/mp3">
@@ -170,13 +170,13 @@ $$
 {: #all-pass-with-comb}
 
 An [all-pass filter](https://en.wikipedia.org/wiki/All-pass_filter)
-allows all frequencies of the input to
-"pass through" unmodified in strength, hence the name. The interesting feature
-of an all-pass filter is that it modifies the
+affects the
 [phase](https://en.wikipedia.org/wiki/Phase_(waves)) of different frequencies,
 shifting them around, causing the original sound to become "mis-aligned".
 This is commonly used in electronic music to implement an effect
 called a [phaser](https://en.wikipedia.org/wiki/Phaser_(effect)).
+The name "all-pass" comes from the fact that all frequencies of the input
+are allowed to "pass through", unmodified in strength.
 
 A typical analog implementation of an all-pass circuit might look like this:
 
@@ -213,7 +213,7 @@ The parallel algorithm I came up with is based on two ideas.
   does not expose enough parallelism on its own, especially for small values of
   $$D$$ (the delay parameter).
   2. Next, we can [parallelize each column](#geometric-prefix-sums). To do
-  so, we identify a problem called ***geometric prefix-sums***. Each column is
+  so, I identify a problem called ***geometric prefix-sums***. Each column is
   one instance of the geometric prefix-sums problem, and we can solve it
   by adapting a well-known algorithm for
   [parallel prefix-sums](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
@@ -245,16 +245,13 @@ processor), but there must be at least $$S$$ steps overall.
 # Splitting Into Columns
 {: #par-columns-comb}
 
-Let's look more closely at the
-[comb filter equation](#comb-equation) $$C[i] = S[i] + \alpha C[i - D]$$.
-Lurking in plain sight, this equation contains $$D$$ completely independent
-computations which can be computed in parallel.
-
-To see the dependencies within $$C$$ more clearly,
-imagine laying out $$C$$ in a matrix,
-where at row $$i$$ and column $$j$$ we put $$C[iD + j]$$.
+The
+[comb filter equation](#comb-equation) $$C[i] = S[i] + \alpha C[i - D]$$
+can be broken up into $$D$$ independent computations.
+Specifically, imagine laying out $$C$$ as a
+matrix, where at row $$i$$ and column $$j$$ we put $$C[iD + j]$$.
 In this layout, each column is a standalone computation, completely independent
-of the values in the other columns. For example, as soon as we know the value of
+of the values in the other columns. For example, as soon as we know the value
 $$C[2]$$, we can immediately compute $$C[D+2]$$ and then $$C[2D+2]$$, etc.
 
 <img width="60%" src="/assets/reverb/comb-columns.svg">
@@ -265,10 +262,8 @@ from top to bottom... however, this does not provide
 enough parallelism. One column
 contains up to $$\lceil N / D \rceil$$ elements, leaving us
 with $$O(N/D)$$ span, which for small values of $$D$$ is not very parallel
-at all.
-
-Ideally, we'd like to be able to do a single column in logarithmic
-span, say $$O(\log(N/D))$$. In the next section, I describe how.
+at all. Ideally, we'd like to be able to do a single column in logarithmic
+span, say $$O(\log(N/D))$$.
 
 # Parallelizing Each Column
 {: #geometric-prefix-sums }
@@ -278,8 +273,8 @@ In this section, I show how each column is essentially a variant of the
 and describe how to adapt a well-known algorithm.
 
 **Setting the Stage**.
-The input elements on the $$j^\text{th}$$ column are elements $$S[iD+j]$$,
-and the outputs are $$C[iD+j]$$. Let's simplify the dicussion by defining
+The $$i$$<sup>th</sup> input of the $$j^\text{th}$$ column is $$S[iD+j]$$,
+and similarly the outputs are $$C[iD+j]$$. Let's simplify the dicussion by defining
 $$X[i] = S[iD+j]$$ and taking $$X$$ as our input sequence.
 Then, abstractly, the problem we're trying to solve is to produce a sequence
 $$Y$$ where $$Y[i] = C[iD+j]$$, i.e. the output column of combed samples.
@@ -299,22 +294,26 @@ Y[i] = \sum_{k=0}^i \alpha^{i-k} X[k]
 $$
 
 Let's call this problem the ***geometric prefix-sums problem***. We
-can solve it with following algorithm, which is adapted from an algorithm
-for
-[parallel prefix sums](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
+can solve it with following algorithm, which I've adapted from a
+[parallel prefix-sums algorithm](https://en.wikipedia.org/wiki/Prefix_sum#Parallel_algorithms).
 
 <div class="algorithm" id="alg-geometric-prefix-sums" name="(Parallel Geometric Prefix-Sums)">
-For inputs $$\alpha$$ and $$X$$ and output $$Y$$, we do three steps.
-1. In parallel, combine input elements in "blocks" of size 2. Each block
-of $$X[i]$$ and $$X[i+1]$$ is transformed into $$\alpha X[i] + X[i+1]$$. These are called the
-***block-sums***. Note that there are half as many block-sums as input values,
-so we've reduced the problem in half.
-2. Recursively compute the geometric prefix-sums of the block-sums.
-In the recursive call, we scale by $$\alpha^2$$ instead of $$\alpha$$.
+
+**Inputs**: $$\alpha \in [0,1]$$ and sequence $$X$$.
+
+**Output**: sequence $$Y$$ where $$Y[i] = \sum_{k=0}^i \alpha^{i-k} X[k]$$.
+
+The algorithm consists of three steps:
+1. (Contraction Step) In parallel, combine adjacent input elements in "blocks"
+of size 2. Specifically, for each even $$i$$, compute $$\alpha X[i] + X[i+1]$$.
+These are called the ***block-sums***. Note that there are half as many
+block-sums as input values, so we've reduced the problem in half.
+2. (Recursive Step) Recursively compute the geometric prefix-sums of the block-sums.
+In the recursive call, use $$\alpha^2$$ instead of $$\alpha$$.
 The results of this step are the *odd indices of* $$Y$$.
-3. "Expand" to fill in the missing (even) indices by computing
-$$Y[i] = X[i] + \alpha Y[i-1]$$ for each even $$i$$.
-(Each value $$Y[i-1]$$ is one of the outputs of the previous step!)
+3. (Expansion Step) Fill in the missing (even) indices by computing
+$$Y[i] = X[i] + \alpha Y[i-1]$$ for each even $$i$$. Note that each $$Y[i-1]$$
+is one of the outputs of the previous step.
 </div>
 
 Here's an example for an input of size 6.
@@ -340,15 +339,14 @@ to continue scanning through the block to fill in the other nearby missing
 indices. -->
 
 **Work and Span**.
-On an input of size $$M$$, the
-[geometric prefix-sums algorithm](#alg-geometric-prefix-sums)
+On an input of size $$M$$, the geometric prefix-sums algorithm
 recursively uses a problem of size $$M/2$$ and otherwise does $$O(M)$$ work,
 all of which is fully parallel. This yields the following work and span
 recurrences, which solve to $$O(M)$$ work and $$O(\log M)$$ span.
 * Work: $$W(M) = W(M/2) + O(M)$$
 * Span: $$S(M) = S(M/2) + O(1)$$
 
-Applying this to a column of
+Applying the geometric prefix-sums algorithm to a column of
 size $$\lceil N/D \rceil$$, we have an algorithm for computing one column of
 the comb filter in $$O(N/D)$$ work and $$O(\log(N/D))$$ span. In total,
 for $$D$$ columns, that gives us a parallel comb algorithm with
@@ -356,26 +354,48 @@ $$O(N)$$ work and $$O(\log(N/D))$$ span. Nice!
 
 # Making It Fast In Practice
 
-Our parallel comb algorithm is fast in theory, but is it fast in practice?
-If implemented exactly as described above, there is a serious problem with
-our algorithm: it's really slow! Specifically, I wrote some
-[`mpl`](https://github.com/mpllang/mpl) code, including a fast sequential
-algorithm for comparison, and did some quick experiments:
+Our parallel comb algorithm is fast in theory: it is asymptotically
+***work-efficient*** (it performs the same amount of work as the fastest
+possible sequential algorithm) and ***highly parallel*** (it has low
+span---logarithmic, in this case).
+
+**But is the algorithm fast in practice?**
+If implemented exactly as described above, no! I tried this, and found that
+a naive implementation of our parallel comb algorithm is as much as
+*8 times slower* on one processor than a fast sequential implementation.
+
+<div class="remark">
+It's easy to make the mistake of focusing on
+*scalability*, not raw speed. That is, I could have told you that my naive
+code gets 7 times faster when I use 8 processors instead of 1, and that
+would have seemed pretty good. But still, it's slower than the
+sequential code, so
+[what's the point](http://www.frankmcsherry.org/assets/COST.pdf)?
+
+Simply put: my naive implementation is useless for less than 8 processors.
+And even with more than 8 processors, it's still not very efficient to use 8
+times as much energy just to get the same result back in slightly less time.
+</div>
+
 <!--(The fast sequential comb
 algorithm is extremely simple: just output $$C[i]$$ according to the
 [comb filter equation](#comb-equation) in increasing order of $$i$$
 looking up previously output values $$C[i-D]$$ as needed.)-->
-on an input of size
+<!--on an input of size
 22MB (about 4 minutes of audio with 16-bit samples at a sample rate of 44.1kHz),
-the parallel code takes about 2.3 seconds, but the fast sequential code takes
-only 0.06 seconds. That's a difference of 40x!
+the parallel code takes about 0.45 seconds, but the fast sequential code takes
+only 0.06 seconds. That's a difference of 8x!-->
 
-At a high level, there are two problems we need to fix: our parallel algorithm
-has poor
+**To make the algorithm fast**, we need to reduce the amount of work it is
+performing by nearly an order of magnitude. This might seem like a daunting
+optimization task, but there are some really easy fixes we can make that will
+get us most of the way there.
+
+<!--
+high constant factors, poor
 [granularity control](https://en.wikipedia.org/wiki/Granularity_(parallel_computing)),
 and poor
 [cache utilization](https://en.wikipedia.org/wiki/Cache_%28computing%29).
-We'll now address both issues.
 
 Let's start with the granularity control problem.
 
@@ -387,3 +407,4 @@ For small values of $$D$$, the matrix is really tall but skinny.
 
 Notice that the
 [geometric prefix-sums algorithm](#alg-geometric-prefix-sums) w
+-->
