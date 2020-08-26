@@ -37,8 +37,8 @@ hole of writing code and running experiments.
 Here are the results. Impressive, for a circuit so simple!
 
 <table class="images">
-<tr class="shrink ralign">
-  <td>original</td>
+<tr>
+  <td class="shrink ralign">original</td>
   <td>
     <audio controls>
       <source src="/assets/reverb/priorities.mp3" type="audio/mp3">
@@ -47,8 +47,8 @@ Here are the results. Impressive, for a circuit so simple!
   </td>
 </tr>
 
-<tr class="shrink ralign">
-  <td>with reverb</td>
+<tr>
+  <td class="shrink ralign">with reverb</td>
   <td>
     <audio controls>
       <source src="/assets/reverb/priorities-rev.mp3" type="audio/mp3">
@@ -110,8 +110,8 @@ us to perceive it as modifying the
 [quality of the sound](https://en.wikipedia.org/wiki/Timbre) itself.
 
 <table class="images">
-<tr class="shrink ralign">
-  <td>original</td>
+<tr>
+  <td class="shrink ralign">original</td>
   <td>
     <audio controls>
       <source src="/assets/reverb/priorities.mp3" type="audio/mp3">
@@ -120,8 +120,8 @@ us to perceive it as modifying the
   </td>
 </tr>
 
-<tr class="shrink ralign">
-  <td>half-second comb</td>
+<tr>
+  <td class="shrink ralign">half-second comb</td>
   <td>
     <audio controls>
       <source src="/assets/reverb/priorities-5.mp3" type="audio/mp3">
@@ -130,8 +130,8 @@ us to perceive it as modifying the
   </td>
 </tr>
 
-<tr class="shrink ralign">
-  <td>10 millisecond comb</td>
+<tr>
+  <td class="shrink ralign">10 millisecond comb</td>
   <td>
     <audio controls>
       <source src="/assets/reverb/priorities-01.mp3" type="audio/mp3">
