@@ -352,10 +352,10 @@ the comb filter in $$O(N/D)$$ work and $$O(\log(N/D))$$ span. In total,
 for $$D$$ columns, that gives us a parallel comb algorithm with
 $$O(N)$$ work and $$O(\log(N/D))$$ span. Nice!
 
-# Making It Fast In Practice
+## Making It Fast In Practice
 
 Our parallel comb algorithm is fast in theory: it is asymptotically
-***work-efficient*** (it performs the same amount of work as the fastest
+***work-efficient*** (it matches the work of the fastest
 possible sequential algorithm) and ***highly parallel*** (it has low
 span---logarithmic, in this case).
 
@@ -372,7 +372,7 @@ would have seemed pretty good. But still, it's slower than the
 sequential code, so
 [what's the point](http://www.frankmcsherry.org/assets/COST.pdf)?
 
-Simply put: my naive implementation is useless for less than 8 processors.
+My naive implementation is useless for machines with less than 8 processors.
 And even with more than 8 processors, it's still not very efficient to use 8
 times as much energy just to get the same result back in slightly less time.
 </div>
@@ -386,10 +386,60 @@ looking up previously output values $$C[i-D]$$ as needed.)-->
 the parallel code takes about 0.45 seconds, but the fast sequential code takes
 only 0.06 seconds. That's a difference of 8x!-->
 
-**To make the algorithm fast**, we need to reduce the amount of work it is
-performing by nearly an order of magnitude. This might seem like a daunting
+**To make the algorithm fast**, we need to reduce the amount of work it
+performs by nearly an order of magnitude. This might seem like a daunting
 optimization task, but there are some really easy fixes we can make that will
 get us most of the way there.
+
+# Fewer Memory Writes
+
+When designing parallel algorithms, it can be really helpful to consider
+how many memory updates the algorithm performs. Simply put, updating memory
+is expensive, but reading from memory is fast (and parallelizes well).
+
+Let's count the number of memory updates, written $$u(N)$$, performed by our
+[parallel geometric prefix-sums algorithm](#geometric-prefix-sums) on an input
+of size $$N$$. The algorithm first constructs an array of $$N/2$$, then recurses
+on this array, and finally constructs an array of size $$N$$. Adding these
+all up, we have $$u(N) = u(N/2) + 3N/2$$ which solves to $$u(N) \approx 3N$$.
+That is, our algorithm performs about $$3N$$ memory updates on an input
+of size $$N$$.
+
+Now, compare this against the fastest possible sequential geometric prefix-sums
+algorithm, which just does a single left-to-right pass, requiring exactly
+$$N$$ writes. That's much fewer than our parallel algorithm's $$3N$$ memory
+updates! Perhaps this is a source of as much as $$3\times$$ overhead.
+
+**Fewer Writes with Bigger Blocks**. Recall that the
+[parallel geometric prefix-sums algorithm](#geometric-prefix-sums) begins by
+computing $$N/2$$ "block-sums", where the blocks are size 2. We can generalize
+this to any constant block-size $$B$$ as follows.
+1. In the contraction step, scan through each block entirely to compute its
+block-sum.
+2. In the recursive step, use a scaling factor of $$\alpha^B$$. The results
+of this step are the outputs at indices $$B-1$$, $$2B-1$$, etc.
+3. In the expansion step, scan through the blocks again to fill in the missing
+indices, using the results of the previous step as the initial values.
+
+<img width="80%" src="/assets/reverb/prefix-sums-blocking.svg">
+
+With this strategy, the number of updates is $$u(N) = u(N/B) + N/B + N$$
+which solves to $$u(N) \approx \frac {B+1} {B-1} N$$. With a modest block-size,
+say $$B = 100$$, we get $$u(N) \approx 1.02 N$$, which is only $$2\%$$ away
+from optimal.
+
+With this change, I measured nearly a $$2\times$$ performance improvement.
+Very nice!
+
+<div class="remark">
+Our analysis suggested as much as a $$3\times$$ improvement, but we only got
+$$2\times$$. Focusing only on memory updates was helpful, but clearly it's not
+the complete story.
+</div>
+
+# Better Cache Utilization
+
+
 
 <!--
 high constant factors, poor
