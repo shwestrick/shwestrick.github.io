@@ -339,12 +339,12 @@ to continue scanning through the block to fill in the other nearby missing
 indices. -->
 
 **Work and Span**.
-On an input of size $$M$$, the geometric prefix-sums algorithm
-recursively uses a problem of size $$M/2$$ and otherwise does $$O(M)$$ work,
+On an input of size $$N$$, the geometric prefix-sums algorithm
+recursively uses a problem of size $$N/2$$ and otherwise does $$O(N)$$ work,
 all of which is fully parallel. This yields the following work and span
-recurrences, which solve to $$O(M)$$ work and $$O(\log M)$$ span.
-* Work: $$W(M) = W(M/2) + O(M)$$
-* Span: $$S(M) = S(M/2) + O(1)$$
+recurrences, which solve to $$O(N)$$ work and $$O(\log N)$$ span.
+* Work: $$W(N) = W(N/2) + O(N)$$
+* Span: $$S(N) = S(N/2) + O(1)$$
 
 Applying the geometric prefix-sums algorithm to a column of
 size $$\lceil N/D \rceil$$, we have an algorithm for computing one column of
@@ -392,23 +392,27 @@ optimization task, but there are some really easy fixes we can make that will
 get us most of the way there.
 
 # Fewer Memory Writes
+{: #fewer-memory-writes}
 
 When designing parallel algorithms, it can be really helpful to consider
-how many memory updates the algorithm performs. Simply put, updating memory
-is expensive, but reading from memory is fast (and parallelizes well).
+how many memory updates the algorithm performs. Simply put, updating memory is
+expensive, but reading from memory is fast (and parallelizes well). If we
+can reduce the overall number of writes to memory, then we might be able to
+improve practical performance.
 
-Let's count the number of memory updates, written $$u(N)$$, performed by our
+So let's count the number of memory updates performed by our
 [parallel geometric prefix-sums algorithm](#geometric-prefix-sums) on an input
-of size $$N$$. The algorithm first constructs an array of $$N/2$$, then recurses
-on this array, and finally constructs an array of size $$N$$. Adding these
-all up, we have $$u(N) = u(N/2) + 3N/2$$ which solves to $$u(N) \approx 3N$$.
-That is, our algorithm performs about $$3N$$ memory updates on an input
-of size $$N$$.
+of size $$N$$, written $$u(N)$$. The algorithm first constructs an array of
+$$N/2$$, then recurses on this array, and finally constructs an array of size
+$$N$$. Adding these all up, we have $$u(N) = u(N/2) + 3N/2$$ which solves to
+$$u(N) \approx 3N$$. That is, the algorithm performs about $$3N$$ memory
+updates on an input of size $$N$$.
 
-Now, compare this against the fastest possible sequential geometric prefix-sums
-algorithm, which just does a single left-to-right pass, requiring exactly
-$$N$$ writes. That's much fewer than our parallel algorithm's $$3N$$ memory
-updates! Perhaps this is a source of as much as $$3\times$$ overhead.
+Now compare this against the fastest possible sequential geometric prefix-sums
+algorithm. Sequentially, we can do exactly $$N$$ writes with a single
+left-to-right pass over the input data. That's much fewer than our parallel
+algorithm's $$3N$$ memory updates! Perhaps this is a source of as much as
+$$3\times$$ overhead.
 
 **Fewer Writes with Bigger Blocks**. Recall that the
 [parallel geometric prefix-sums algorithm](#geometric-prefix-sums) begins by
@@ -428,33 +432,76 @@ which solves to $$u(N) \approx \frac {B+1} {B-1} N$$. With a modest block-size,
 say $$B = 100$$, we get $$u(N) \approx 1.02 N$$, which is only $$2\%$$ away
 from optimal.
 
-With this change, I measured nearly a $$2\times$$ performance improvement.
-Very nice!
+In my implementation, I measured nearly a **2x performance improvement
+by increasing the block-size from 2 to 100**. Very nice!
 
 <div class="remark">
-Our analysis suggested as much as a $$3\times$$ improvement, but we only got
-$$2\times$$. Focusing only on memory updates was helpful, but clearly it's not
-the complete story.
+Our analysis suggests we should've been able to get as much as a
+$$3\times$$ improvement, but we only got $$2\times$$. Counting the
+number of memory updates was helpful, but clearly it's not the whole story.
 </div>
 
 # Better Cache Utilization
+{: #cache-hits}
 
+Recall that each instance of the geometric prefix-sums algorithm operates on
+elements that are each $$D$$ indices apart (i.e. the $$j$$<sup>th</sup> column
+consists of elements $$S[D+j]$$, $$S[2D+j]$$, $$S[3D+j]$$, etc). These elements
+are not adjacent in memory, causing our algorithm to have really poor cache
+utilization. **Essentially, every lookup of an input element is guaranteed to
+be a cache miss**.
 
+To get better cache utilization, we need to try to guarantee that when we
+access an element, we also immediately access nearby elements. This suggests
+that we should **do multiple adjacent columns together as one unit**, because
+physically adjacent elements belong to adjacent columns.
 
-<!--
-high constant factors, poor
-[granularity control](https://en.wikipedia.org/wiki/Granularity_(parallel_computing)),
-and poor
-[cache utilization](https://en.wikipedia.org/wiki/Cache_%28computing%29).
+<div class="remark">
+We could first [transpose](https://en.wikipedia.org/wiki/Transpose) the
+input, turning columns into rows, and therefore guaranteeing that physically
+adjacent elements are also part of the same instance of the geometric
+prefix-sums. But this would require at least an additional $$2N$$ writes: first
+to do the transpose, and then to transpose back again afterwards.
+</div>
 
-Let's start with the granularity control problem.
+At a high level, the change we're making to the algorithm is switching from
+1-dimensional blocks (as in the [previous section](#fewer-memory-writes)) to
+2-dimensional blocks. It might help to see the illustration below. The overall
+input is a matrix of $$D$$ columns and $$\lceil N/D \rceil$$ rows. Focusing
+on one group of $$K$$ adjacent columns, we break up this group into
+blocks of height $$B$$ and width $$K$$. Each block yields $$K$$ block-sums,
+and just like before, we recursively compute the geometric prefix-sums of the
+block-sums and then expand to produce the output columns.
 
-For large values of $$D$$, the matrix is really wide but not very tall. In
-this case, we could control granularity by doing a lot of columns together
-as one unit.
+<img width="100%" src="/assets/reverb/2d-blocked.svg">
 
-For small values of $$D$$, the matrix is really tall but skinny.
+<div class="remark">
+Be warned: implementing the the 2-D blocking strategy is a fiery hell of
+off-by-one index arithmetic errors. A part of me is beginning to believe that I
+just enjoy this sort of suffering.
+</div>
 
-Notice that the
-[geometric prefix-sums algorithm](#alg-geometric-prefix-sums) w
--->
+In my implementation, I measured **another 2x performance improvement
+by doing groups of 100 columns together as one unit**. We're getting somewhere!
+
+# Performance Results
+
+Above, I described two significant performance optimizations which
+[reduced the number of memory updates](#fewer-memory-writes)
+and
+[increased the number of cache hits](#cache-hits).
+Each of these optimizations on its own gave us approximately a $$2\times$$
+performance boost.
+
+Where does that leave us? With both optimizations contribution about a
+$$2\times$$ performance boost, we're still about
+$$2\times$$ slower than the fast sequential comb algorithm. Specifically,
+here are the overheads (with respect to the fast sequential algorithm)
+I measured for different values of the parameters $$B$$ (block height)
+and $$K$$ (block width, i.e. number of adjacent columns):
+
+|     | $$B$$ | $$K$$ | Overhead |
+| --- | ----- | ----- | -------- |
+| naive parallel | $$2$$ | $$1$$ | $$7.5\times$$ |
+| with fewer writes | $$100$$ | $$1$$ | $$4.5\times$$ |
+| with better cache efficiency | $$100$$ | $$100$$ | $$2\times$$ |
