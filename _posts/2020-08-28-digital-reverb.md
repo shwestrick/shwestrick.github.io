@@ -554,7 +554,7 @@ sequential algorithm. After optimizing the heck out of the parallel
 implementation, I got big performance gains ($$5\times$$ improvement), but that
 still leaves us with about $$2\times$$ overhead.
 
-The takeaway? Designing a good parallel algorithm often isn't very hard. **The
-tricky part is making it competitive with a fast sequential algorithm.**
+The takeaway? Designing a good parallel algorithm isn't always that hard.
+**The tricky part is making it competitive with a fast sequential algorithm.**
 
 Work hard, span easy, yall. :v:
