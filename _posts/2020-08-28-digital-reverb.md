@@ -1,6 +1,7 @@
 ---
 layout: post
 title:  "Parallel Digital Reverb, Or: How I Optimized the Heck Out of a Comb Filter"
+date:   2020-08-28 12:13:00 -0400
 mathjax: true
 comments: true
 ---
