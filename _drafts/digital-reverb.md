@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Digital Reverb: Fast Comb Filters Are All You Need"
+title:  "Parallel Digital Reverb, Or: How I Optimized the Heck Out of a Comb Filter"
 mathjax: true
 comments: true
 ---
@@ -63,20 +63,26 @@ parallel reverb algorithm**, based on the circuit shown above.
 At first, seeing as how the circuit is built
 from two components (comb and all-pass filters), it might seem that we need to
 design two algorithms.
-But it turns out that if you have a fast algorithm for a
-comb filter, then you essentially
-[already have a fast all-pass algorithm](#all-pass-with-comb), for free. So most
-of my effort went into
-[designing and implementing a fast comb filter](#par-comb-section).
+But it turns out that if you have a fast comb filter, then you essentially
+[already have a fast all-pass algorithm](#all-pass-with-comb), for free.
+**So, most of my effort** went into
+[designing and implementing a fast comb filter](#par-comb-section)
+and optimizing it to
+[reduce the number of writes](#fewer-memory-writes)
+and
+[increase the number of cache hits](#cache-hits).
+Overall, this turned out to be much more interesting (and trickier) than I
+expected. **After powering through a fiery hell of off-by-one index arithmetic**,
+I [managed to get the overhead down](#performance)
+to approximately $$2\times$$ and [speedups](#speedup-plot) up to $$11\times$$.
+The self-scalability is quite impressive: up to $$27\times$$.
 
-Feel free to [leave a note below](#respond) if you have any questions
-or comments. If you're curious to see source code, check out
+If you have any comments, [leave a note below](#respond)!
+And if you're curious to see source code, check out
 [my initial work](https://github.com/MPLLang/mpl/pull/122)
 and
-[recent improvements](https://github.com/MPLLang/mpl/commit/7fee9cdfce3fe56596ba93e25159b17aeef9e090)
-(including the algorithm I describe below) on GitHub.
-
-I hope you have as much fun reading through this as I did working on it!
+[final implementation](https://github.com/MPLLang/mpl/commit/7fee9cdfce3fe56596ba93e25159b17aeef9e090)
+on GitHub.
 
 ## What is a Comb Filter?
 {: #comb-filter}
@@ -362,19 +368,20 @@ span---logarithmic, in this case).
 **But is the algorithm fast in practice?**
 If implemented exactly as described above, no! I tried this, and found that
 a naive implementation of our parallel comb algorithm is as much as
-*8 times slower* on one processor than a fast sequential implementation.
+*12 times slower* on one processor than a fast sequential implementation.
 
 <div class="remark">
 It's easy to make the mistake of focusing on
 *scalability*, not raw speed. That is, I could have told you that my naive
-code gets 7 times faster when I use 8 processors instead of 1, and that
+code gets 7.5 times faster when I use 8 processors instead of 1, and that
 would have seemed pretty good. But still, it's slower than the
 sequential code, so
 [what's the point](http://www.frankmcsherry.org/assets/COST.pdf)?
 
-My naive implementation is useless for machines with less than 8 processors.
-And even with more than 8 processors, it's still not very efficient to use 8
-times as much energy just to get the same result back in slightly less time.
+My naive implementation is useless for machines with just a few processors.
+And even with large multicores, it's still not very efficient to use an
+*order of magnitude more energy* just to get
+the same result in slightly less time.
 </div>
 
 <!--(The fast sequential comb
@@ -389,7 +396,10 @@ only 0.06 seconds. That's a difference of 8x!-->
 **To make the algorithm fast**, we need to reduce the amount of work it
 performs by nearly an order of magnitude. This might seem like a daunting
 optimization task, but there are some really easy fixes we can make that will
-get us most of the way there.
+get us most of the way there:
+[reducing the number of writes](#fewer-memory-writes),
+and
+[increasing the number of cache hits](#cache-hits).
 
 # Fewer Memory Writes
 {: #fewer-memory-writes}
@@ -410,16 +420,17 @@ updates on an input of size $$N$$.
 
 Now compare this against the fastest possible sequential geometric prefix-sums
 algorithm. Sequentially, we can do exactly $$N$$ writes with a single
-left-to-right pass over the input data. That's much fewer than our parallel
-algorithm's $$3N$$ memory updates! Perhaps this is a source of as much as
-$$3\times$$ overhead.
+left-to-right pass over the input data. Our parallel algorithm does
+**three times as many writes**! Perhaps this is a significant source of
+overhead. Let's try to decrease it.
 
 **Fewer Writes with Bigger Blocks**. Recall that the
 [parallel geometric prefix-sums algorithm](#geometric-prefix-sums) begins by
 computing $$N/2$$ "block-sums", where the blocks are size 2. We can generalize
 this to any constant block-size $$B$$ as follows.
 1. In the contraction step, scan through each block entirely to compute its
-block-sum.
+block-sum. For example with $$B=3$$, the block-sum of a block starting at
+index $$i$$ would be $$\alpha^2 X[i] + \alpha X[i+1] + X[i+2]$$.
 2. In the recursive step, use a scaling factor of $$\alpha^B$$. The results
 of this step are the outputs at indices $$B-1$$, $$2B-1$$, etc.
 3. In the expansion step, scan through the blocks again to fill in the missing
@@ -432,21 +443,16 @@ which solves to $$u(N) \approx \frac {B+1} {B-1} N$$. With a modest block-size,
 say $$B = 100$$, we get $$u(N) \approx 1.02 N$$, which is only $$2\%$$ away
 from optimal.
 
-In my implementation, I measured nearly a **2x performance improvement
-by increasing the block-size from 2 to 100**. Very nice!
-
-<div class="remark">
-Our analysis suggests we should've been able to get as much as a
-$$3\times$$ improvement, but we only got $$2\times$$. Counting the
-number of memory updates was helpful, but clearly it's not the whole story.
-</div>
+In my implementation, I measured a **20% performance improvement by increasing
+the block-size from 2 to 100**. I'd call this pretty good, but clearly there's
+something else which needs attention.
 
 # Better Cache Utilization
 {: #cache-hits}
 
-Recall that each instance of the geometric prefix-sums algorithm operates on
-elements that are each $$D$$ indices apart (i.e. the $$j$$<sup>th</sup> column
-consists of elements $$S[D+j]$$, $$S[2D+j]$$, $$S[3D+j]$$, etc). These elements
+Each column consists of elements $$D$$ indices apart (i.e. the
+$$j$$<sup>th</sup> column consists of elements $$S[D+j]$$, $$S[2D+j]$$,
+$$S[3D+j]$$, etc). These elements
 are not adjacent in memory, causing our algorithm to have really poor cache
 utilization. **Essentially, every lookup of an input element is guaranteed to
 be a cache miss**.
@@ -464,11 +470,11 @@ prefix-sums. But this would require at least an additional $$2N$$ writes: first
 to do the transpose, and then to transpose back again afterwards.
 </div>
 
-At a high level, the change we're making to the algorithm is switching from
+At a high level, the change we need to make to the algorithm is switching from
 1-dimensional blocks (as in the [previous section](#fewer-memory-writes)) to
-2-dimensional blocks. It might help to see the illustration below. The overall
-input is a matrix of $$D$$ columns and $$\lceil N/D \rceil$$ rows. Focusing
-on one group of $$K$$ adjacent columns, we break up this group into
+2-dimensional blocks. It might help to see the illustration below. The
+input to the comb is a matrix of $$D$$ columns and $$\lceil N/D \rceil$$ rows.
+Focusing on one group of $$K$$ adjacent columns, we break up this group into
 blocks of height $$B$$ and width $$K$$. Each block yields $$K$$ block-sums,
 and just like before, we recursively compute the geometric prefix-sums of the
 block-sums and then expand to produce the output columns.
@@ -476,32 +482,78 @@ block-sums and then expand to produce the output columns.
 <img width="100%" src="/assets/reverb/2d-blocked.svg">
 
 <div class="remark">
-Be warned: implementing the the 2-D blocking strategy is a fiery hell of
+Be warned: implementing the 2-D blocking strategy is a fiery hell of
 off-by-one index arithmetic errors. A part of me is beginning to believe that I
 just enjoy this sort of suffering.
 </div>
 
-In my implementation, I measured **another 2x performance improvement
-by doing groups of 100 columns together as one unit**. We're getting somewhere!
+In my implementation, I measured **nearly a $$4\times$$ performance improvement
+by doing groups of 100 columns together as one unit**. Wow, now we're getting
+somewhere!
 
 # Performance Results
+{: #performance}
 
 Above, I described two significant performance optimizations which
 [reduced the number of memory updates](#fewer-memory-writes)
 and
 [increased the number of cache hits](#cache-hits).
-Each of these optimizations on its own gave us approximately a $$2\times$$
-performance boost.
+Where does that leave us?
 
-Where does that leave us? With both optimizations contribution about a
-$$2\times$$ performance boost, we're still about
-$$2\times$$ slower than the fast sequential comb algorithm. Specifically,
-here are the overheads (with respect to the fast sequential algorithm)
-I measured for different values of the parameters $$B$$ (block height)
-and $$K$$ (block width, i.e. number of adjacent columns):
+Here are the overheads
+(with respect to the fast sequential algorithm) for a variety of
+different combinations of parameters $$B$$ (block height) and
+$$K$$ (block width, i.e. number of adjacent columns). I've marked the
+three implementations discussed: the "naive parallel" implementation, and
+the two stages of optimizing it. There are a couple other interesting
+spots in the design space to consider: for example, if we had
+first worked on increasing the number of cache hits ($$B=2$$, $$K=100$$), we
+would have seen only a $$2\times$$ performance improvement.
+**It's the combination of the two optimizations which gives us the biggest
+performance improvement (about $$5\times$$)**.
 
-|     | $$B$$ | $$K$$ | Overhead |
-| --- | ----- | ----- | -------- |
-| naive parallel | $$2$$ | $$1$$ | $$7.5\times$$ |
-| with fewer writes | $$100$$ | $$1$$ | $$4.5\times$$ |
-| with better cache efficiency | $$100$$ | $$100$$ | $$2\times$$ |
+| B (block height) | K (block width) | Overhead | Notes
+|---|---|----------|
+| 2 |	1 |	11.9 | "naive parallel" implementation
+| 100 |	1 |	9.7 | with "fewer writes" optimization
+| 2 |	100 |	5.4 |
+| 100 |	100 |	2.6 | with "more cache hits" optimization
+| 600 |	600 |	2.4 |
+
+Even in the best configuration, we're still about $$2\times$$ slower than
+the fast sequential algorithm. So there's still more work to do. But that
+is **much better than the $$12\times$$ overhead we started with**.
+
+Now that we've spent so much time optimizing the sequential overhead of
+our comb algorithm, it's time to look at how parallel it is.
+As expected, the parallelism is quite good!
+
+<img id="speedup-plot" width="60%" src="/assets/reverb/plot.svg">
+
+In this plot, the "self-speedup" line shows how our algorithm scales relative
+to its own 1-processor performance, and the "speedup" line shows scalability
+relative to the fast sequential algorithm. Notice that the self-speedup line
+is about twice as high as the speedup line, which matches the
+approximately $$2\times$$ overhead we measured above.
+**In some sense, the self-speedup line shows what we could hope to achieve by
+further optimizing the algorithm**. The speedup line shows our current
+reality: a maximum improvement over the fast sequential algorithm of about
+$$11\times$$.
+
+## Conclusion
+
+With a good comb filter in hand, we get an all-pass filter essentially for
+free, and together these filters can be used to simulate a pretty convincing
+reverb effect, using Schroeder's reverberator circuit.
+
+In this post, I described the process of designing and implementing
+a fast comb filter algorithm.
+At first, a naive implementation was an order of magnitude slower than a simple
+sequential algorithm. After optimizing the heck out of the parallel
+implementation, I got big performance gains ($$5\times$$ improvement), but that
+still leaves us with about $$2\times$$ overhead.
+
+The takeaway? Designing a good parallel algorithm often isn't very hard. **The
+tricky part is making it competitive with a fast sequential algorithm.**
+
+Work hard, span easy, yall. :v:
