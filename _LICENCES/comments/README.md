@@ -1,4 +1,6 @@
-The [MIT license](https://opensource.org/licenses/MIT) in this file applies to the comment display and submission code located in the following files:
+The [MIT license](https://opensource.org/licenses/MIT) in this directory
+applies to the comment display and submission code located in the following
+files:
 
 ~~~
 _includes/comment.html
