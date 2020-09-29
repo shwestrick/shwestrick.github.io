@@ -36,6 +36,7 @@ minima:
     stackoverflow:
       link: "1031831"
       text: sam-westrick
+    youtube: SamWestrick
 
 # Build settings
 theme: minima
