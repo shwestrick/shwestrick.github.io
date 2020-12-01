@@ -9,9 +9,9 @@
   border-top: 5px solid #3193cc;
 }
 
-pre, code {
-  background-color: #fdfdfd;
-}
+// pre, code {
+//   background-color: #fdfdfd;
+// }
 
 pre code {
   font-size: 12pt;
@@ -184,6 +184,7 @@ audio {
   }
 }
 
+.highlight { background-color: #fdfdfd }
 .highlight .hll { background-color: #ffffcc }
 .highlight .c { color: #8f5902; font-style: italic } /* Comment */
 .highlight .err { color: #a40000; border: 1px solid #ef2929 } /* Error */
