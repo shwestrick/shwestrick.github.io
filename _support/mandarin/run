@@ -3,4 +3,4 @@
 python3 make-images.py
 rm -f {wo,shi,hen,ni}.*.png
 rm -f {wo,shi,hen,ni}.pdf
-mv {wo,shi,hen,ni}.mp4 ../../assets/two-months-mandarin/
+# mv {wo,shi,hen,ni}.mp4 ../../assets/mandarin/

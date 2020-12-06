@@ -61,6 +61,16 @@ table.images td {
   border: none;
 }
 
+table.dense tr {
+  padding: 0;
+  margin: 0;
+}
+
+table.dense td {
+  padding: 0;
+  margin: 0;
+}
+
 table.images img {
   width: 100%;
 }
