@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Task-Local Heaps Demand Hierarchical Memory Management"
+title:  "Parallel Functional Programming Demands Task-Local Memory Management"
 ---
 
 At CMU, my research has largely been centered around
@@ -52,6 +52,18 @@ through the combination of a number of techniques:
 
 In the world of parallelism, however,
 
+
+One of the most prevalent GC designs for parallel functional languages is
+based on a two-level structure.
+At the top level, there is a "global" heap which is shared amongst all
+processors.
+Each processor then has its own processor-local heap.
+
+One of the biggest issues with this design, however, is that it requires
+promotions in order to share data between processors.
+For any reasonable scheduler, these operations are much too frequent!
+
+HMM...
 
 {% comment %}
 Functional programming languages---such as
