@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Parallel Functional Programming Demands Task-Local Memory Management"
+title:  "The Challenges Facing Parallel Functional Programming"
 ---
 
 At CMU, my research has largely been centered around
