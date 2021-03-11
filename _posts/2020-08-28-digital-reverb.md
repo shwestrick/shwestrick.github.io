@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Parallel Digital Reverb, Or: How I Optimized the Heck Out of a Comb Filter"
+title:  "Parallel Digital Reverb"
 date:   2020-08-28 12:13:00 -0400
 mathjax: true
 comments: true
@@ -66,14 +66,14 @@ from two components (comb and all-pass filters), it might seem that we need to
 design two algorithms.
 But it turns out that if you have a fast comb filter, then you essentially
 [already have a fast all-pass algorithm](#all-pass-with-comb), for free.
-**So, most of my effort** went into
+So, most of my effort went into
 [designing and implementing a fast comb filter](#par-comb-section)
 and optimizing it to
 [reduce the number of writes](#fewer-memory-writes)
 and
 [increase the number of cache hits](#cache-hits).
 Overall, this turned out to be much more interesting (and trickier) than I
-expected. **After powering through a fiery hell of off-by-one index arithmetic**,
+expected. After powering through a fiery hell of off-by-one index arithmetic,
 I [managed to get the overhead down](#performance)
 to approximately $$2\times$$ and [speedups](#speedup-plot) up to $$11\times$$.
 The self-scalability is quite impressive: up to $$27\times$$.
