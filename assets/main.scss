@@ -9,17 +9,23 @@
   border-top: 5px solid #3193cc;
 }
 
-// pre, code {
-//   background-color: #fdfdfd;
+// .highlight {
+//   background: #fbfeff;
+//   background-color: #fbfeff;
 // }
 
-pre code {
-  font-size: 12pt;
-}
+// pre, code {
+//   background-color: #fdfdfd;
+//   background: none;
+// }
 
-pre {
-  border: none;
-}
+// pre code {
+//   font-size: 12pt;
+// }
+
+// pre {
+//   border: none;
+// }
 
 img {
   display: block;
@@ -146,6 +152,31 @@ audio {
   background: #fbfeff;
 }
 
+p code {
+  border-color: #c8c8c8;
+  background: #fdfdfd;
+  padding: 1px 3px;
+}
+
+figure.highlight pre {
+  border-top: 1px solid #c8c8c8;
+  border-left: 8px solid #c8c8c8;
+  border-bottom: 1px solid #c8c8c8;
+  border-right: 1px solid #c8c8c8;
+  width: auto;
+  padding: 5px;
+  padding-left: 15px;
+  background: #fdfdfd;
+  border-radius: 5px;
+  margin: 2em;
+  margin-left: 3em;
+  margin-right: 3em;
+}
+
+figure.highlight code {
+  background: none;
+}
+
 .remark:before {
   content: 'Remark';
   font-weight: bold;
@@ -195,6 +226,7 @@ audio {
 }
 
 .highlight { background-color: #fdfdfd }
+.highlight { background: #fdfdfd }
 .highlight .hll { background-color: #ffffcc }
 .highlight .c { color: #8f5902; font-style: italic } /* Comment */
 .highlight .err { color: #a40000; border: 1px solid #ef2929 } /* Error */
