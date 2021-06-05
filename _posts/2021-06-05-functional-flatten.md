@@ -1,6 +1,8 @@
 ---
 layout: post
 title: "Purely Functional Parallel Flattening"
+date:   2021-06-05 14:55:00 -0400
+comments: true
 mathjax: true
 ---
 
