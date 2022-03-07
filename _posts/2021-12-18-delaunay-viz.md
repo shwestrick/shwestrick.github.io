@@ -28,6 +28,14 @@ For example below, we begin with a mesh and insert a new point. The set of
 ripped triangles is highlighted in blue, and then tent of the new point is
 drawn in red.
 
+<table class="images">
+<tr>
+  <td><img src="/assets/delaunay-viz/rip-tent-single-0.jpg">before</td>
+  <td><img src="/assets/delaunay-viz/rip-tent-single-1.jpg">rip-and-tent</td>
+  <td><img src="/assets/delaunay-viz/rip-tent-single-2.jpg">after</td>
+</tr>
+</table>
+
 <img width="50%" src="/assets/delaunay-viz/rip-tent-single.gif">
 
 If we tried to insert multiple points simultaneously, the cavities created by
@@ -38,6 +46,14 @@ $$N$$ steps total.
 
 However, when inserting multiple points simultaneously, **the cavities don't
 always overlap**:
+
+<table class="images">
+<tr>
+  <td><img src="/assets/delaunay-viz/rip-tent-double-0.jpg">before</td>
+  <td><img src="/assets/delaunay-viz/rip-tent-double-1.jpg">rip-and-tent</td>
+  <td><img src="/assets/delaunay-viz/rip-tent-double-2.jpg">after</td>
+</tr>
+</table>
 
 <img width="50%" src="/assets/delaunay-viz/rip-tent-double.gif">
 
