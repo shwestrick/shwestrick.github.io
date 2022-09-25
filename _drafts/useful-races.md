@@ -4,15 +4,14 @@ title:  "Race Conditions Can Be Useful for Parallelism"
 mathjax: true
 ---
 
-Programmers are well aware of the hazards of race conditions. But what about
+Many are well aware of the hazards of race conditions. But what about
 the benefits?
 
 There are situations where race conditions can be helpful for
 performance. By this, I mean that
 **you can sometimes make a program faster by *creating* race conditions**.
 Essentially, a small amount of non-determinism can
-help eliminate a bottleneck caused by unnecessary synchronization and/or memory
-traffic.
+help eliminate a performance bottleneck.
 
 Now, first, let me emphasize: **I'm not talking about data races**.
 Data races are typically bugs, by definition.[^1]
@@ -31,7 +30,7 @@ It's important for parallel programmers to be aware of these
 techniques for a couple reasons. First, the performance advantages
 (for both space and time) are significant. But perhaps more importantly,
 these techniques demonstrate that race conditions can be disciplined,
-easy to reason about, and useful.
+possible to reason about, and useful.
 
 <!-- Familiarizing yourself with this area of algorithm design
 forces you to do away with any fears you might have about race conditions.
@@ -71,24 +70,25 @@ default.-->
 correctness does not depend on any race conditions. We'll then show how to
 improve performance by introducing races.-->
 
-## Parallel Breadth-First Search (BFS)
+## Example: Parallel Breadth-First Search (BFS)
 
-Our running example is a parallel breadth-first search. This algorithm operates
-in a series of rounds, where on each round it visits a ***frontier*** of vertices
+It's helpful to have a motivating example, so let's consider a
+parallel breadth-first search. This algorithm operates in a series of rounds,
+where on each round it visits a ***frontier*** of vertices
 which are all the same distance from the ***source*** (the initial vertex). By
 selecting the subset of edges which are "used" to traverse the graph, we
 derive a ***BFS tree***. In the BFS tree, each vertex points to its
 ***parent***, which is a vertex from the previous frontier.
 
-For example, here are an example graph with vertices labeled 0 through 9,
-and one possible BFS tree, with frontiers highlighted, starting with vertex 0
-as a the source. In this graph, the maximum distance from the source is 3,
-so there are 4 frontiers (corresponding to distances 0, 1, 2, and 3).
+For example, below is a graph with vertices labeled 0 through 9. The second
+image shows one possible BFS tree, with frontiers highlighted, starting with
+vertex 0 as the source. In this graph, the maximum distance from the source is
+3, so there are 4 frontiers (corresponding to distances 0, 1, 2, and 3).
 
 <table class="images">
 <tr>
   <td><img src="/assets/racy/graph.png">input graph</td>
-  <td><img src="/assets/racy/tree-and-frontiers.png">BFS tree (bold edges) and frontiers (highlighted regions)</td>
+  <td><img src="/assets/racy/tree-and-frontiers.png">BFS tree (bold edges) and frontiers (highlighted)</td>
 </tr>
 </table>
 
@@ -100,14 +100,19 @@ a parent for each vertex.
 
 Selecting a parent for each vertex requires care, because for each vertex, there
 might be multiple possible parents. For example, in the images above, vertex 3
-is used as the parent of vertex 4, but both vertices 1 and 2 are valid options
-as well.
+was selected as the parent of vertex 4, but either vertex 1 and 2 could have
+been selected instead.
 
-**Slow approach: collect potential parents and then deduplicate**.
-One reasonable approach is to first compute the set of potential
-parents, and then select parents from these. The set of
-potential parents is a list of pairs $$(v,u)$$ where $$u$$ is a potential
-parent of $$v$$, and we can select parents by "deduplicating": for any
+How should we go about selecting parents? Below, we'll consider two options:
+one which is race-free, and one which has race conditions but is significantly
+faster.
+
+### Slow approach: collect potential parents and then deduplicate
+
+The idea here is to first compute the set of *potential parents*, and then
+select parents from these. The ***potential parents*** are a list of
+pairs $$(v,u)$$ where $$u$$ could be selected as the parent of $$v$$. From
+these, we can select parents by "deduplicating": for any
 two pairs $$(v, u_1)$$ and $$(v, u_2)$$, we keep one and remove the other
 (and continue until there are no duplicates).
 
@@ -119,16 +124,126 @@ bucket. This results in deterministic parent selection in linear work and
 polylog depth.
 
 However, one not-so-nice thing about this approach is that **it is slow**,
-because it has to construct the set of potential parents. Across the whole BFS, every
-edge will be considered as a potential parent once. Therefore, constructing the
-set of potential parents incurs a total of approximately $$2|E|$$ writes to
-memory for $$|E|$$ edges in the input graph. (The factor of 2 is due to
-representing potential parents as a list of pairs.)
+because it stores the set of potential parents in memory. Across the whole BFS,
+every edge will be considered as a potential parent once. Therefore,
+constructing the set of potential parents incurs a total of approximately
+$$2|E|$$ writes to memory for $$|E|$$ edges in the input graph. (The factor of
+2 is due to representing potential parents as a list of pairs.)
 
 That's a lot of memory traffic which could be avoided.
 
-**Faster approach: deduplicate "on-the-fly" with priority updates.**
+### Faster approach: deduplicate "on-the-fly"
 
+To speed things up, we can do deduplication more eagerly while generating
+the set of potential parents. The result is that the set of potential parents
+never needs to be fully stored in memory.
+
+At a high level, the idea is to operate on a mutable array, where each cell
+of the array stores the parent of a vertex. Initially, these are all "empty"
+(using some default value, e.g., `-1`). To visit a vertex, we set its parent
+by performing a [compare-and-swap](https://en.wikipedia.org/wiki/Compare-and-swap),
+or CAS for short.
+
+In particular, suppose that vertex $$u$$ is a potential parent of $$v$$. The
+following ML-like pseudocode implements a function
+`tryVisit(v,u)` which attempts to set $$u$$ as the parent of $$v$$, and returns
+`true` if successful, or `false` if $$v$$ has already been visited. The code
+is implemented in terms of a function `compareAndSwap(a, i, x, y)` which
+performs a CAS at `a[i]`, returning a boolean of whether or not
+it successfully swapped from `x` to `y`.
+
+{% highlight sml %}
+(* Mutable array of parents. `parents[v]` is the parent of `v`,
+ * or `-1` if `v` has not yet been visited. *)
+val parents: vertex array = ...
+
+(* Try to set `u` as the parent of `v`.
+ * Returns a boolean indicating success. *)
+fun tryVisit(v,u) =
+  parents[v] == -1 andalso compareAndSwap(parents, v, -1, u)
+{% endhighlight %}
+
+On one round of BFS, we can then apply `tryVisit(v,u)` in parallel for every
+newly visited vertex $$v$$ and each of its potential parents $$u$$. This
+requires traversing the set of potential parents, but does not require storing
+it in memory.
+
+This performs one compare-and-swap per edge. Assuming relatively low contention,
+this requires only approximately $$|V|$$ memory updates in total (where $$|V|$$
+is the number of vertices) across the whole BFS: for each vertex, there will be
+one successful CAS. That is a significant improvement over the $$2|E|$$ updates
+required for the slower approach.
+
+### Making it deterministic with priority updates
+
+The faster approach above is non-deterministic: it ensures that some parent is
+selected for each vertex, but doesn't ensure that the same parent will be selected every
+time. Therefore, the final output of the BFS, while always correct, could be
+different on each execution. (There are many valid BFS trees for any graph,
+and the above algorithm selects one of them non-deterministically.)
+
+**To make the algorithm deterministic**, we can use
+[priority updates](https://www.cs.cmu.edu/~blelloch/papers/SBFG13.pdf).
+The idea is to select the "best" parent on-the-fly using CAS. We'll
+say that a parent $$u_1$$ is "better than" some other parent $$u_2$$ if
+$$u_1 > u_2$$ (relying on numeric labels for vertices).
+
+The following code implements this idea. Again, we use a mutable array
+`parents` where `parents[v]` is the parent of `v`, or `-1` if it has not
+yet been visited.
+
+{% highlight sml %}
+val parents: vertex array = ... (* same as before *)
+
+(* Try to update `u` as the parent of `v`.
+ * Returns a boolean indicating whether or not this is the
+ * first update. *)
+fun priorityTryVisit(v,u) =
+  let
+    val old = parents[v]
+    val isFirstVisit = old == -1
+  in
+    if u <= old then
+      false  (* done: better parent already found *)
+    else if compareAndSwap(parents, v, old, u) then
+      isFirstVisit  (* done: successful update! *)
+    else
+      priorityTryVisit(v,u)  (* retry: CAS contention *)
+  end
+{% endhighlight %}
+
+Again, the idea is to apply `priorityTryVisit(v,u)` in parallel for every
+newly visited vertex $$v$$ and each of its potential parents $$u$$. This
+requires traversing the set of potential parents, but does not require storing
+it in memory.
+
+When this completes, the "best" parent (i.e., the one with
+largest numeric label) will have been selected for each vertex.
+**Therefore, the output is deterministic.**
+
+Note that, although this produces deterministic output, the algorithm itself
+is non-deterministic. There is a race condition to reason about: any two
+calls `priorityTryVisit(v,u1)` and `priorityTryVisit(v,u2)` which occur
+concurrently on the same vertex `v` will race to update the value `parents[v]`.
+
+**To argue correctness**, there are two reasonable paths forward. For this
+particular code it's not too difficult to brute force your way through all
+possible orderings of loads and CAS operations to see that the code is correct.
+Alternatively, we could use an argument based on
+[linearization](https://en.wikipedia.org/wiki/Linearizability). Here, the
+gist is that each call to `priorityTryVisit` will *linearize* at the moment
+it performs a successful CAS. If you are unfamiliar with this kind of reasoning,
+I would highly encourage spending an hour or two working through it!
+
+**Cost**. How many memory updates does this approach require? That is a really
+interesting question, and the answer is not so straightforward.
+In their [paper](https://www.cs.cmu.edu/~blelloch/papers/SBFG13.pdf),
+Shun et al. consider multiple reasonable models and argue that for $$n$$
+contending priority updates, we can expect approximately $$O(\log n)$$
+successful CAS operations. In the context of BFS, $$n$$ here corresponds to the
+maximum degree of a vertex. Therefore, the total number of memory updates in
+this approach will be approximately $$|V| \log \delta$$, where $$\delta$$ is
+the maximum degree of any vertex. Not bad!
 
 <!--{% highlight sml %}
 (* parents[v] is the parent of v, or -1 if not yet visited *)
@@ -163,11 +278,12 @@ val filter: 'a array * ('a -> bool) -> 'a array
 val flatten: 'a array array -> 'a array
 val dedupVertices: vertex array -> vertex array -->
 
-Here's a simple function for a parallel breadth-first search, written
-in a mostly functional style, using standard data-parallel functions like
-`map`, `filter`, `flatten`, etc., as well as a few in-place updates.
-(This is similar to the code we could write for
-[`mpl`](https://github.com/MPLLang/mpl)).
+Below is the code for a parallel breadth-first search using priority updates
+to select parents. It's written in a mostly functional style, using standard
+data-parallel functions like `map`, `filter`, `flatten`, etc., as well
+compare-and-swap operations to implement the priority update. This code style
+is similar to the code we could write for
+[`mpl`](https://github.com/MPLLang/mpl), a compiler for Parallel ML.
 
 The function `breadthFirstSearch(G,s)` performs a
 breadth-first search of graph `G`, starting from a vertex `s`.
@@ -196,21 +312,21 @@ fun breadthFirstSearch(G: graph, source: vertex) : vertex array =
      * After all priority updates have completed, the parent of v
      * will be the maximum of all potential parents.
      *)
-    fun priorityUpdate(v,u) =
+    fun priorityTryVisit(v,u) =
       let
         val old = parents[v]
         val isFirstVisit = old == -1
       in
         if u <= old then
-          false (* v previously visited with a larger parent *)
+          false  (* done: better parent already found *)
         else if compareAndSwap(parents, v, old, u) then
-          isFirstVisit
+          isFirstVisit  (* done: successful update! *)
         else
-          priorityUpdate(v,u) (* retry: CAS contention *)
+          priorityTryVisit(v,u)  (* retry: CAS contention *)
       end
 
     fun tryVisitNbrs(u) =
-      filter(neighbors(G,u), fn v => tryVisit(v,u))
+      filter(neighbors(G,u), fn v => priorityTryVisit(v,u))
 
     (* One round of BFS. The frontier is the set of vertices
      * visited on the previous round. *)
@@ -228,6 +344,15 @@ fun breadthFirstSearch(G: graph, source: vertex) : vertex array =
     parents                 (* return array of parents *)
   end
 {% endhighlight %}
+
+## Final Thoughts
+
+I didn't get into the weeds of reasoning about the correctness of race
+conditions in this post. With a bit of practice, I think you will find that
+this is not too difficult, especially as you acquire a repertoire of familiar
+techniques. In my experience, knowing just a few techniques is sufficient for
+understanding a wide variety of sophisticated, state-of-the-art parallel
+algorithms. Priority updates are a great place to get started.
 
 -------------
 
