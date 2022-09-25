@@ -138,7 +138,7 @@ To speed things up, we can do deduplication more eagerly while generating
 the set of potential parents. The result is that the set of potential parents
 never needs to be fully stored in memory.
 
-At a high level, the idea is to operate on a mutable array, where each cell
+We'll operate on a mutable array, where each cell
 of the array stores the parent of a vertex. Initially, these are all "empty"
 (using some default value, e.g., `-1`). To visit a vertex, we set its parent
 by performing a [compare-and-swap](https://en.wikipedia.org/wiki/Compare-and-swap),
@@ -174,21 +174,31 @@ is the number of vertices) across the whole BFS: for each vertex, there will be
 one successful CAS. That is a significant improvement over the $$2|E|$$ updates
 required for the slower approach.
 
-### Making it deterministic with priority updates
-
-The faster approach above is non-deterministic: it ensures that some parent is
-selected for each vertex, but doesn't ensure that the same parent will be selected every
+**Non-determinism**. This approach ensures that some parent is selected for each
+vertex, but doesn't ensure that the same parent will be selected every
 time. Therefore, the final output of the BFS, while always correct, could be
 different on each execution. (There are many valid BFS trees for any graph,
 and the above algorithm selects one of them non-deterministically.)
 
-**To make the algorithm deterministic**, we can use
+Regardless of non-determinism, we can still argue that this code is correct.
+There is a race condition to reason about: any two
+calls `tryVisit(v,u1)` and `tryVisit(v,u2)`
+will race to update the value `parents[v]`.
+Abstractly, each value `parents[v]` has only two possible states: either
+"empty" (i.e., `-1`), or set with a valid parent. If a CAS
+succeeds, then the resulting value `parents[v]` is valid and will never change.
+If a CAS fails, then another CAS on the same cell must have succeeded.
+
+### Making it deterministic with priority updates
+
+To make the above approach deterministic, we can use
 [priority updates](https://www.cs.cmu.edu/~blelloch/papers/SBFG13.pdf).
 The idea is to select the "best" parent on-the-fly using CAS. We'll
 say that a parent $$u_1$$ is "better than" some other parent $$u_2$$ if
-$$u_1 > u_2$$ (relying on numeric labels for vertices).
+$$u_1 > u_2$$ (relying on numeric labels for vertices). So, in other words,
+we want to compute the maximum parent for each vertex.
 
-The following code implements this idea. Again, we use a mutable array
+Here's some pseudocode. Again, we use a mutable array
 `parents` where `parents[v]` is the parent of `v`, or `-1` if it has not
 yet been visited.
 
@@ -212,27 +222,30 @@ fun priorityTryVisit(v,u) =
   end
 {% endhighlight %}
 
-Again, the idea is to apply `priorityTryVisit(v,u)` in parallel for every
+Similar to before, we apply `priorityTryVisit(v,u)` in parallel for every
 newly visited vertex $$v$$ and each of its potential parents $$u$$. This
 requires traversing the set of potential parents, but does not require storing
-it in memory.
-
+it in memory. (For more details, see the full code below.)
 When this completes, the "best" parent (i.e., the one with
 largest numeric label) will have been selected for each vertex.
 **Therefore, the output is deterministic.**
 
 Note that, although this produces deterministic output, the algorithm itself
 is non-deterministic. There is a race condition to reason about: any two
-calls `priorityTryVisit(v,u1)` and `priorityTryVisit(v,u2)` which occur
-concurrently on the same vertex `v` will race to update the value `parents[v]`.
+contending calls `priorityTryVisit(v,u1)` and `priorityTryVisit(v,u2)`
+will race to update the value `parents[v]`.
 
-**To argue correctness**, there are two reasonable paths forward. For this
-particular code it's not too difficult to brute force your way through all
-possible orderings of loads and CAS operations to see that the code is correct.
-Alternatively, we could use an argument based on
-[linearization](https://en.wikipedia.org/wiki/Linearizability). Here, the
-gist is that each call to `priorityTryVisit` will *linearize* at the moment
-it performs a successful CAS. If you are unfamiliar with this kind of reasoning,
+**To argue correctness**, consider that each value `parents[v]`
+increases monotonically with each successful CAS. With this observation,
+it's not too difficult to brute force through all
+possible interleavings of loads and CAS operations to see that the code is
+correct. Essentially, each call to `priorityTryVisit` has a
+[linearization point](https://en.wikipedia.org/wiki/Linearizability)
+at the moment it performs a successful CAS. At this linearization point,
+the state of the cell increases monotonically. After all calls complete, the
+final value of the cell is the maximum.
+
+If you are unfamiliar with this kind of reasoning,
 I would highly encourage spending an hour or two working through it!
 
 **Cost**. How many memory updates does this approach require? That is a really
@@ -240,8 +253,10 @@ interesting question, and the answer is not so straightforward.
 In their [paper](https://www.cs.cmu.edu/~blelloch/papers/SBFG13.pdf),
 Shun et al. consider multiple reasonable models and argue that for $$n$$
 contending priority updates, we can expect approximately $$O(\log n)$$
-successful CAS operations. In the context of BFS, $$n$$ here corresponds to the
-maximum degree of a vertex. Therefore, the total number of memory updates in
+successful CAS operations. In the context of BFS, the variable $$n$$
+corresponds to the
+maximum degree of a vertex, as this will be the maximum number of contending
+priority updates. Therefore, the total number of memory updates in
 this approach will be approximately $$|V| \log \delta$$, where $$\delta$$ is
 the maximum degree of any vertex. Not bad!
 
@@ -278,12 +293,13 @@ val filter: 'a array * ('a -> bool) -> 'a array
 val flatten: 'a array array -> 'a array
 val dedupVertices: vertex array -> vertex array -->
 
-Below is the code for a parallel breadth-first search using priority updates
-to select parents. It's written in a mostly functional style, using standard
+Below is the code for a deterministic parallel breadth-first search using
+priority updates to select parents. It's written in a mostly functional style,
+using standard
 data-parallel functions like `map`, `filter`, `flatten`, etc., as well
-compare-and-swap operations to implement the priority update. This code style
-is similar to the code we could write for
-[`mpl`](https://github.com/MPLLang/mpl), a compiler for Parallel ML.
+compare-and-swap operations to implement the priority update. This code
+is similar to Parallel ML, which we could compile and run with
+the [`mpl`](https://github.com/MPLLang/mpl) compiler.
 
 The function `breadthFirstSearch(G,s)` performs a
 breadth-first search of graph `G`, starting from a vertex `s`.
@@ -347,16 +363,16 @@ fun breadthFirstSearch(G: graph, source: vertex) : vertex array =
 
 ## Final Thoughts
 
-I didn't get into the weeds of reasoning about the correctness of race
-conditions in this post. With a bit of practice, I think you will find that
-this is not too difficult, especially as you acquire a repertoire of familiar
-techniques. In my experience, knowing just a few techniques is sufficient for
-understanding a wide variety of sophisticated, state-of-the-art parallel
-algorithms. Priority updates are a great place to get started.
+With a bit of practice, I think you will find that reasoning about race
+conditions isn't too difficult, especially as you acquire a repertoire of
+familiar techniques. In my experience, knowing just a few techniques is
+sufficient for understanding a wide variety of sophisticated, state-of-the-art
+parallel algorithms. Priority updates are a great place to get started.
 
 -------------
-
 -------------
+
+**Footnotes**
 
 [^1]: In the context of a language memory model, a *data race* is typically defined as two conflicting concurrent accesses which are not "properly synchronized" (e.g., non-atomic loads and stores, which the language semantics may allow to be reordered, optimized away, etc). Data races can lead to incorrect behavior due to miscompilation or lack of atomicity, and are therefore often considered undefined behavior. In other words, in many languages, data races are essentially bugs by definition. One recent exception is the OCaml memory model, which is capable of providing a reasonable semantics to programs with data races. See [Bounding Data Races in Space and Time](https://kcsrk.info/papers/pldi18-memory.pdf), by Stephen Dolan, KC Sivaramakrishnan, and Anil Madhavapeddy.
 
