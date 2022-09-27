@@ -105,9 +105,10 @@ might be multiple possible parents. For example, in the images above, vertex 3
 was selected as the parent of vertex 4, but either vertex 1 and 2 could have
 been selected instead.
 
-How should we go about selecting parents? Below, we'll consider two options:
-one which is race-free, and one which has race conditions but is significantly
-faster.
+How should we go about selecting parents? Below, we'll consider three options:
+one which is race-free, one which has race conditions but is significantly
+faster, and one which has race conditions but is able to ensure deterministic
+output.
 
 ### Slow approach: collect potential parents and then deduplicate
 
