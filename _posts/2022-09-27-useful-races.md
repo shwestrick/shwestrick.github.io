@@ -2,6 +2,8 @@
 layout: post
 title:  "Race Conditions Can Be Useful for Parallelism"
 mathjax: true
+date:   2022-09-27 10:00:00 -0400
+comments: true
 ---
 
 Many are well aware of the hazards of race conditions. But what about
