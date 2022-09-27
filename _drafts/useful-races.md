@@ -200,15 +200,25 @@ we want to compute the maximum parent for each vertex.
 
 Here's some pseudocode. Again, we use a mutable array
 `parents` where `parents[v]` is the parent of `v`, or `-1` if it has not
-yet been visited.
+yet been visited. We additionally need a second mutable array, `visited`,
+where `visited[v]` is a boolean indicating whether or not a vertex has
+been visited yet. This ensure that we only update the parents of unvisited
+vertices. At the end of each round, the visited flags for the new frontier
+need to be updated.
 
 {% highlight sml %}
 val parents: vertex array = ... (* same as before *)
+val visited: bool array = ... (* visited flags for each vertex *)
 
-(* Try to update `u` as the parent of `v`.
- * Returns a boolean indicating whether or not this is the
- * first update. *)
-fun priorityTryVisit(v,u) =
+(* Try to make `u` the parent of `v`, but only if
+ *   1. `v` has not yet been visited, and
+ *   2. `u` is a "better" parent (i.e., larger)
+ * Returns a boolean indicating whether or not the
+ * first update was performed. *)
+fun priorityUpdateParent(v,u) =
+  if visited[v] then
+    false
+  else
   let
     val old = parents[v]
     val isFirstVisit = old == -1
@@ -218,28 +228,28 @@ fun priorityTryVisit(v,u) =
     else if compareAndSwap(parents, v, old, u) then
       isFirstVisit  (* done: successful update! *)
     else
-      priorityTryVisit(v,u)  (* retry: CAS contention *)
+      priorityUpdateParent(v,u)  (* retry: CAS contention *)
   end
 {% endhighlight %}
 
-Similar to before, we apply `priorityTryVisit(v,u)` in parallel for every
-newly visited vertex $$v$$ and each of its potential parents $$u$$. This
-requires traversing the set of potential parents, but does not require storing
-it in memory. (For more details, see the full code below.)
+We apply `priorityUpdateParent(v,u)` in parallel for every
+to-be-visited vertex $$v$$ and each of its potential parents $$u$$. This
+requires traversing all potential parents, but does not require storing
+them in memory. (For more details, see the full code below.)
 When this completes, the "best" parent (i.e., the one with
 largest numeric label) will have been selected for each vertex.
 **Therefore, the output is deterministic.**
 
 Note that, although this produces deterministic output, the algorithm itself
 is non-deterministic. There is a race condition to reason about: any two
-contending calls `priorityTryVisit(v,u1)` and `priorityTryVisit(v,u2)`
+contending calls `priorityUpdateParent(v,u1)` and `priorityUpdateParent(v,u2)`
 will race to update the value `parents[v]`.
 
 **To argue correctness**, consider that each value `parents[v]`
 increases monotonically with each successful CAS. With this observation,
 it's not too difficult to brute force through all
 possible interleavings of loads and CAS operations to see that the code is
-correct. Essentially, each call to `priorityTryVisit` has a
+correct. Essentially, each call to `priorityUpdateParent` has a
 [linearization point](https://en.wikipedia.org/wiki/Linearizability)
 at the moment it performs a successful CAS. At this linearization point,
 the state of the cell increases monotonically. After all calls complete, the
@@ -285,7 +295,7 @@ val _ = foreach(treeEdges, fn (v,u) => parents[v] := u)
 val nextFrontier = map(treeEdges, fn (v, u) => v)
 {% endhighlight %}-->
 
-## An Implementation in Parallel ML
+## Implementation of Deterministic BFS with Priority Updates
 
 <!-- val tabulate: int * (int -> 'a) -> 'a array
 val map: 'a array * ('a -> 'b) -> 'b array
@@ -321,14 +331,21 @@ soon as all vertices reachable from the source have been visited.
 {% highlight sml %}
 fun breadthFirstSearch(G: graph, source: vertex) : vertex array =
   let
-    val parents: bool array = tabulate(numVertices(G), fn v => -1)
+    val parents: vertex array = tabulate(numVertices(G), fn v => -1)
+    val visited: bool array = tabulate(numVertices(G), fn v => false)
 
-    (* Try to visit v from potential parent u. Returns `true` if
-     * this is the first time the parent of v has been updated.
-     * After all priority updates have completed, the parent of v
+    (* Try to update parent[v] := u, but only if v has not yet been
+     * visited, and if u is larger than the previous parent. After
+     * all priority updates have completed, the parent of v
      * will be the maximum of all potential parents.
+     * Returns a boolean indicating whether or not the first update
+     * of parent[v] was performed. This is used by the filter below
+     * (see tryUpdateParents) to deduplicate.
      *)
-    fun priorityTryVisit(v,u) =
+    fun priorityUpdateParent(v,u) =
+      if visited[v] then
+        false
+      else
       let
         val old = parents[v]
         val isFirstVisit = old == -1
@@ -338,16 +355,22 @@ fun breadthFirstSearch(G: graph, source: vertex) : vertex array =
         else if compareAndSwap(parents, v, old, u) then
           isFirstVisit  (* done: successful update! *)
         else
-          priorityTryVisit(v,u)  (* retry: CAS contention *)
+          priorityUpdateParent(v,u)  (* retry: CAS contention *)
       end
 
-    fun tryVisitNbrs(u) =
-      filter(neighbors(G,u), fn v => priorityTryVisit(v,u))
+    fun tryUpdateParents(u) =
+      filter(neighbors(G,u), fn v => priorityUpdateParent(v,u))
 
     (* One round of BFS. The frontier is the set of vertices
      * visited on the previous round. *)
     fun computeNextFrontier(frontier: vertex array) : vertex array =
-      flatten(map(frontier, tryVisitNbrs))
+      let
+        val nextFrontier = flatten(map(frontier, tryUpdateParents))
+      in
+        (* visit the next frontier *)
+        foreach(nextFrontier, fn v => visited[v] := true);
+        nextFrontier
+      end
 
     fun bfsLoop(frontier: vertex array) =
       if size(frontier) = 0 then () (* done *)
@@ -356,24 +379,66 @@ fun breadthFirstSearch(G: graph, source: vertex) : vertex array =
     val firstFrontier = singletonArray(s)
   in
     parents[s] := s;        (* visit source (use self as parent) *)
+    visited[s] := true;
     bfsLoop(firstFrontier); (* do the search *)
     parents                 (* return array of parents *)
   end
 {% endhighlight %}
 
+## Some Timings
+
+Below are timings collected from the
+[Parallel ML Benchmark Suite](https://github.com/MPLLang/parallel-ml-bench)
+for the three BFS strategies discussed here. These three strategies vary
+in their level of determinism: one is fully deterministic, one is partially
+deterministic (i.e. deterministic output but not non-deterministic execution),
+and one is completely non-deterministic.
+
+The table shows timings on $$P = 1$$ and $$P = 72$$ processors, and speedups
+relative to a baseline 1-processor time. The speedup is computed as
+$$T_{72} / B$$, where $$T_{72}$$ is the time on 72 processors and $$B$$ is the
+baseline; in this case, we use the fastest 1-processor time as the baseline.
+The input is a randomly generated power-law graph, with approximately
+16.8M vertices and 199M edges, symmetrized.
+
+We can see here that the fastest approach is the fully
+non-deterministic strategy. Not far behind (~20% slower) is the approach
+based on deterministic priority updates. And, by far, the slowest approach
+is the fully deterministic strategy. The additional cost for the fully
+deterministic strategy is due to high memory pressure, to write out all
+potential parents before duplicating.
+
+| BFS Strategy     | Deterministic? | P = 1 | P = 72 | Speedup (w.r.t. fastest 1-proc) |
+| ---------------- | -------------- | ----: | -----: | --: |
+| race-free, explicit dedup (slow approach)  |  yes  |   89.6s |  1.84s | 8x |
+| deterministic priority updates | output only | 18.7s | 0.487s | 30x |
+| deduplicate on-the-fly (faster approach)  | no | 14.8s | 0.406s | 36x |
+
 ## Final Thoughts
 
-With a bit of practice, I think you will find that reasoning about race
-conditions isn't too difficult, especially as you acquire a repertoire of
-familiar techniques. In my experience, knowing just a few techniques is
-sufficient for understanding a wide variety of sophisticated, state-of-the-art
-parallel algorithms. Priority updates are a great place to get started.
+In cases where non-determinism is acceptable,
+the results above demonstrate that race conditions can be useful for
+improving performance. But this improved performance comes with the tradeoff:
+racy code is more difficult to debug and prove correct.
+
+In my experience, with a bit of practice, reasoning about race conditions
+can become familiar and comfortable. It's especially helpful to acquire a
+repertoire of familiar techniques. Knowing just a few
+techniques is sufficient for understanding a wide variety of sophisticated,
+state-of-the-art parallel algorithms. Priority updates are a great place to get
+started.
+
+If you're interested in learning more, consider reading about
+[deterministic reservations](https://www.cs.cmu.edu/~jshun/determ.pdf), a
+technique for parallelizing incremental sequential algorithms. The resulting
+algorithms are parallel, with deterministic output, but non-deterministic
+execution. The technique is surprisingly powerful.
 
 -------------
 -------------
 
 **Footnotes**
 
-[^1]: In the context of a language memory model, a *data race* is typically defined as two conflicting concurrent accesses which are not "properly synchronized" (e.g., non-atomic loads and stores, which the language semantics may allow to be reordered, optimized away, etc). Data races can lead to incorrect behavior due to miscompilation or lack of atomicity, and are therefore often considered undefined behavior. In other words, in many languages, data races are essentially bugs by definition. One recent exception is the OCaml memory model, which is capable of providing a reasonable semantics to programs with data races. See [Bounding Data Races in Space and Time](https://kcsrk.info/papers/pldi18-memory.pdf), by Stephen Dolan, KC Sivaramakrishnan, and Anil Madhavapeddy.
+[^1]: In the context of a language memory model, a *data race* is typically defined as two conflicting concurrent accesses which are not "properly synchronized" (e.g., non-atomic loads and stores, which the language semantics may allow to be reordered, optimized away, etc). Data races can lead to incorrect behavior due to miscompilation or lack of atomicity, and are therefore often considered undefined behavior. In other words, in many languages (e.g. C/C++), data races are essentially bugs by definition. One recent exception is the OCaml memory model, which is capable of providing a reasonable semantics to programs with data races. See [Bounding Data Races in Space and Time](https://kcsrk.info/papers/pldi18-memory.pdf), by Stephen Dolan, KC Sivaramakrishnan, and Anil Madhavapeddy.
 
-[^2]: Assuming no other sources of non-determinism, such as true randomness.
+<!-- [^2]: Assuming no other sources of non-determinism, such as true randomness. -->
