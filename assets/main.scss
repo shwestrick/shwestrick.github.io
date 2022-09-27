@@ -177,6 +177,13 @@ figure.highlight code {
   background: none;
 }
 
+@media (max-width: 650px) {
+  figure.highlight pre {
+    margin-left: 0;
+    margin-right: 0
+  }
+}
+
 .remark:before {
   content: 'Remark';
   font-weight: bold;
