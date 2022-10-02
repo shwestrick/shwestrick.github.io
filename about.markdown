@@ -6,8 +6,8 @@ permalink: /about/
 
 <img class="imagecircle" src="/assets/headshot-2.jpg" width="175" height="175" />
 
-I'm [Sam Westrick](http://samwestrick.com), and I recently completed by
-Ph.D. at Carnegie Mellon University doing research on parallel programming
+I'm [Sam Westrick](http://samwestrick.com), a post-doc at
+Carnegie Mellon University doing research on parallel programming
 languages and parallel algorithms. I'm the lead developer of
 [`mpl`](https://github.com/mpllang/mpl) ("maple"), a compiler for Parallel ML,
 which helps bring a little joy to the world of parallel programming. At CMU,
