@@ -12,14 +12,17 @@ machines. I have access to a 72-core (144 hyperthreaded) multicore server, so
 let's see how fast we can get on that machine.
 
 My code is
-available [here](https://github.com/shwestrick/mpl-1brc).
-To get good performance, I ended up using four key optimizations, which
-altogether yielded a 10x improvement over my initial code.
+available here: [`mpl-1brc`](https://github.com/shwestrick/mpl-1brc). It was
+pretty quick to throw together an initial working implementation. Then,
+to get good performance, I worked through four key optimizations.
+Altogether, these optimizations yielded 10x improvement
+over my initial code.
 
-Currently, I'm getting just about **2.3 seconds** end-to-end on 72 cores,
-for an input file of one billion rows. And, it could probably be
-faster. (I'm using no fancy parsing tricks, no SIMD, and fairly basic hashing.)
-The speed I'm getting at the moment is due largely to MPL's scalability.
+Currently, I'm getting just about **2.3 seconds** end-to-end on 72 cores
+(144 hyperthreads), for an input file of one billion rows. It could
+probably be quite a bit faster with more optimization---I'm using no fancy
+parsing tricks, no SIMD, and fairly basic hashing. The speed I'm getting at the
+moment is due largely to MPL's scalability.
 
 <img id="time-breakdown" width="90%" src="/assets/1brc/time-breakdown.svg">
 
